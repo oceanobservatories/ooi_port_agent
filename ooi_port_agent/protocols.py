@@ -33,6 +33,8 @@ class PortAgentProtocol(Protocol):
         Register this protocol with the router
         """
         self.port_agent.router.register(self.endpoint_type, self)
+        self.transport.setTCPKeepAlive(True)
+        self.transport.setTCPNoDelay(True)
 
     def connectionLost(self, reason=connectionDone):
         """
@@ -124,6 +126,8 @@ class CommandProtocol(LineOnlyReceiver):
 
     def connectionMade(self):
         self.port_agent.router.register(self.endpoint_type, self)
+        self.transport.setTCPKeepAlive(True)
+        self.transport.setTCPNoDelay(True)
 
     def connectionLost(self, reason=connectionDone):
         self.port_agent.router.deregister(self.endpoint_type, self)
