@@ -112,7 +112,7 @@ def create_packets(orb_packet, pktid):
              'sta': channel.sta,
              'chan': channel.chan,
              'data': channel.data,
-             'nsamp': channel.data,
+             'nsamp': channel.nsamp,
              'samprate': channel.samprate,
              'time': channel.time,
              'type_suffix': orb_packet.type.suffix,

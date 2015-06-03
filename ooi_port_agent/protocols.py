@@ -48,8 +48,8 @@ class InstrumentProtocol(PortAgentProtocol):
     def connectionMade(self):
         self.port_agent.instrument_connected(self)
         self.port_agent.router.register(self.endpoint_type, self)
-        self.transport.setTCPKeepAlive(True)
-        self.transport.setTCPNoDelay(True)
+        # self.transport.setTCPKeepAlive(True)
+        # self.transport.setTCPNoDelay(True)
 
     def connectionLost(self, reason=connectionDone):
         self.port_agent.instrument_disconnected(self)
@@ -67,11 +67,14 @@ class DigiInstrumentProtocol(InstrumentProtocol):
     def dataReceived(self, data):
         self.buffer.extend(data)
         data = ''.join(self.buffer)
-        packet, remaining = Packet.packet_from_buffer(data)
-        if packet is not None:
-            self.port_agent.router.got_data([packet])
-            self.buffer.clear()
-            self.buffer.extendleft(remaining)
+        while True:
+            packet, data = Packet.packet_from_buffer(data)
+            if packet is not None:
+                self.port_agent.router.got_data([packet])
+                self.buffer.clear()
+                self.buffer.extend(data)
+            else:
+                break
 
 
 class DigiCommandProtocol(InstrumentProtocol):
@@ -91,6 +94,8 @@ class CommandProtocol(LineOnlyReceiver):
     Specialized protocol which is not called until a line of text terminated by the delimiter received
     default delimiter is '\r\n'
     """
+    delimiter = b'\n'
+
     def __init__(self, port_agent, packet_type, endpoint_type):
         log.msg('Creating CommandProtocol')
         self.port_agent = port_agent

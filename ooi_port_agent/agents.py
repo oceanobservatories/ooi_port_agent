@@ -242,7 +242,7 @@ class DatalogReadingPortAgent(PortAgent):
 class DigiDatalogAsciiPortAgent(DatalogReadingPortAgent):
     def __init__(self, config):
         super(DigiDatalogAsciiPortAgent, self).__init__(config)
-        self.ooi_ts_regex = re.compile(r'<OOI-TS (.+?) TS>\r\n(.*?)<\\OOI-TS>', re.DOTALL)
+        self.ooi_ts_regex = re.compile(r'<OOI-TS (.+?) [TX][NS]>\r\n(.*?)<\\OOI-TS>', re.DOTALL)
         self.buffer = ''
         self.MAXBUF = 65535
 
