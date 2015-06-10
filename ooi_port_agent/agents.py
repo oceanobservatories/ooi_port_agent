@@ -1,4 +1,5 @@
 from __future__ import division
+import glob
 
 import ooi_port_agent
 import json
@@ -200,7 +201,7 @@ class DatalogReadingPortAgent(PortAgent):
         super(DatalogReadingPortAgent, self).__init__(config)
         self.files = []
         for each in config['files']:
-            self.files.extend(each)
+            self.files.extend(glob.glob(each))
 
         self.files.sort()
         self._filehandle = None
@@ -231,7 +232,7 @@ class DatalogReadingPortAgent(PortAgent):
             return
 
         if self._filehandle is None:
-            name = self.files.pop()
+            name = self.files.pop(0)
             log.msg('Begin reading:', name)
             self._filehandle = open(name, 'r')
 
@@ -276,7 +277,7 @@ class DigiDatalogAsciiPortAgent(DatalogReadingPortAgent):
             return
 
         if self._filehandle is None:
-            name = self.files.pop()
+            name = self.files.pop(0)
             log.msg('Begin reading:', name)
             self._filehandle = open(name, 'r')
 
