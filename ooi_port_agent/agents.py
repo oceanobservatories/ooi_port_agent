@@ -1,4 +1,5 @@
 from __future__ import division
+import glob
 
 import ooi_port_agent
 import json
@@ -200,7 +201,7 @@ class DatalogReadingPortAgent(PortAgent):
         super(DatalogReadingPortAgent, self).__init__(config)
         self.files = []
         for each in config['files']:
-            self.files.extend(each)
+            self.files.extend(glob.glob(each))
 
         self.files.sort()
         self._filehandle = None
@@ -231,7 +232,7 @@ class DatalogReadingPortAgent(PortAgent):
             return
 
         if self._filehandle is None:
-            name = self.files.pop()
+            name = self.files.pop(0)
             log.msg('Begin reading:', name)
             self._filehandle = open(name, 'r')
 
@@ -276,7 +277,7 @@ class DigiDatalogAsciiPortAgent(DatalogReadingPortAgent):
             return
 
         if self._filehandle is None:
-            name = self.files.pop()
+            name = self.files.pop(0)
             log.msg('Begin reading:', name)
             self._filehandle = open(name, 'r')
 
@@ -307,7 +308,7 @@ class DigiDatalogAsciiPortAgent(DatalogReadingPortAgent):
             self._filehandle = None
 
         # allow the reactor loop to process other events
-        reactor.callLater(0.02, self._read)
+        reactor.callLater(0.01, self._read)
 
 
 class LinewiseDatalogPortAgent(DatalogReadingPortAgent):
@@ -353,7 +354,7 @@ class LinewiseDatalogPortAgent(DatalogReadingPortAgent):
             self._filehandle = None
 
         # allow the reactor loop to process other events
-        reactor.callLater(0.02, self._read)
+        reactor.callLater(0.01, self._read)
 
     def _find_timestamp(self, line):
         for matcher, extractor in self.matchers:
