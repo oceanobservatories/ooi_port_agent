@@ -18,7 +18,9 @@ Options:
 
 """
 import logging
+import os
 from docopt import docopt
+import sys
 from twisted.internet import reactor
 from twisted.python import log
 import yaml
@@ -84,6 +86,7 @@ def main():
         log.err('Unable to import CAMHD libraries, CAMHD port agent unavailable')
 
     try:
+        os.environ['ANTELOPE_PYTHON_GILRELEASE'] = '1'
         from antelope_agent import AntelopePortAgent
     except ImportError:
         AntelopePortAgent = None
@@ -102,6 +105,7 @@ def main():
 
     agent_type = config['type']
     agent = agent_type_map.get(agent_type)
+
     if agent is not None:
         agent(config)
         exit(reactor.run())

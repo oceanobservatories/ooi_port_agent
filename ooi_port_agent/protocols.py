@@ -144,7 +144,8 @@ class CommandProtocol(LineOnlyReceiver):
         else:
             packets = Packet.create('Received empty command on command port', PacketType.PA_FAULT)
 
-        self.port_agent.router.got_data(packets)
+        if packets:
+            self.port_agent.router.got_data(packets)
 
     def connectionMade(self):
         self.port_agent.router.register(self.endpoint_type, self)

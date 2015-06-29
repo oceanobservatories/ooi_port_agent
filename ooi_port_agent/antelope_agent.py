@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 from twisted.internet import reactor
@@ -9,28 +10,26 @@ from common import PacketType, NEWLINE
 from packet import Packet
 import cPickle as pickle
 
+def get_one(orb):
+    try:
+        pktid, srcname, pkttime, data = orb.reap(1)
+        orb_packet = Pkt.Packet(srcname, pkttime, data)
+        return create_packets(orb_packet, pktid)
+    except OrbIncompleteException:
+        return []
+
 
 class OrbThread(threading.Thread):
-    def __init__(self, addr, port, port_agent):
+    def __init__(self, orb, port_agent):
         super(OrbThread, self).__init__()
-        self.addr = addr
-        self.port = port
+        self.orb = orb
         self.port_agent = port_agent
 
     def run(self):
-        with orbopen('%s:%d' % (self.addr, self.port)) as orb:
-            for source in self.port_agent.select:
-                orb.select(source)
-            orb.seek(self.port_agent.seek)
-            while self.port_agent.keep_going:
-                try:
-                    pktid, srcname, pkttime, data = orb.reap(1)
-                    orb_packet = Pkt.Packet(srcname, pkttime, data)
-                    packets = create_packets(orb_packet, pktid)
-                    reactor.callFromThread(self.port_agent.router.got_data, packets)
-                    time.sleep(.00001)
-                except OrbIncompleteException:
-                    pass
+        while self.port_agent.keep_going:
+            reactor.callFromThread(self.port_agent.router.got_data, get_one(self.orb))
+            time.sleep(.1)
+
 
 
 class AntelopePortAgent(PortAgent):
@@ -39,8 +38,8 @@ class AntelopePortAgent(PortAgent):
         self.inst_addr = config['instaddr']
         self.inst_port = config['instport']
         self.keep_going = False
-        self.select = []
-        self.seek = ORBOLDEST
+        self.orb = orbopen('%s:%d' % (self.inst_addr, self.inst_port))
+        log.msg('Opened orb: %s' % self.orb)
         self.orb_thread = None
         reactor.addSystemEventTrigger('before', 'shutdown', self._orb_stop)
 
@@ -53,34 +52,41 @@ class AntelopePortAgent(PortAgent):
     def register_commands(self, command_protocol):
         super(AntelopePortAgent, self).register_commands(command_protocol)
         log.msg('PortAgent register commands for protocol: %s' % command_protocol)
+        command_protocol.register_command('orblist', self._list_channels)
         command_protocol.register_command('orbselect', self._set_select)
         command_protocol.register_command('orbseek', self._set_seek)
         command_protocol.register_command('orbstart', self._orb_start)
         command_protocol.register_command('orbstop', self._orb_stop)
+        command_protocol.register_command('orbget', self._orb_get)
+
+    def _list_channels(self, *args):
+        with orbopen('%s:%d' % (self.inst_addr, self.inst_port)) as orb:
+            return Packet.create(json.dumps(orb.sources(), indent=1) + NEWLINE, PacketType.PA_STATUS)
 
     def _set_select(self, command, *args):
         if len(args) == 0:
-            self.select = []
-            msg = 'Cleared orb select list'
+            num_sources = self.orb.select()
         else:
-            self.select.extend(args)
-            msg = 'Added to select list: %s' % args
+            num_sources = self.orb.select(args[0])
+        msg = 'Orb select(%s) yielded num_sources: %d' % (args[:1], num_sources)
         return Packet.create(msg + NEWLINE, PacketType.PA_STATUS)
 
     def _set_seek(self, command, *args):
         if len(args) == 0:
-            self.seek = ORBOLDEST
+            seek = ORBOLDEST
         else:
-            self.seek = int(args[0])
-        msg = 'Orb seek set to %s' % self.seek
+            seek = int(args[0])
+
+        self.orb.seek(seek)
+        msg = 'Orb seek set to %s' % seek
         return Packet.create(msg + NEWLINE, PacketType.PA_STATUS)
 
     def _orb_start(self, *args):
         if self.orb_thread is None:
             self.keep_going = True
-            self.orb_thread = OrbThread(self.inst_addr, self.inst_port, self)
+            self.orb_thread = OrbThread(self.orb, self)
             self.orb_thread.start()
-            msg = 'Started orb thread with select: %s seek: %s' % (self.select, self.seek)
+            msg = 'Started orb thread'
         else:
             msg = 'Orb already running!'
         return Packet.create(msg + NEWLINE, PacketType.PA_STATUS)
@@ -94,6 +100,9 @@ class AntelopePortAgent(PortAgent):
         else:
             msg = 'Orb thread not running!'
         return Packet.create(msg + NEWLINE, PacketType.PA_STATUS)
+
+    def _orb_get(self, *args):
+        self.router.got_data(get_one(self.orb))
 
     def get_state(self, *args):
         if self.orb_thread is not None:
@@ -120,6 +129,6 @@ def create_packets(orb_packet, pktid):
              'pktid': pktid,
              }
 
-        packets.extend(Packet.create(pickle.dumps(d, protocol=-1), PacketType.FROM_INSTRUMENT))
+        packets.extend(Packet.create(pickle.dumps(d, protocol=-1), PacketType.PICKLED_FROM_INSTRUMENT))
     return packets
 

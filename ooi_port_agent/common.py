@@ -113,6 +113,7 @@ class PacketType(Enumeration):
     DIGI_CMD = 7
     DIGI_RSP = 8
     PA_HEARTBEAT = 9
+    PICKLED_FROM_INSTRUMENT = 10
 
 
 class RouterStat(Enumeration):
