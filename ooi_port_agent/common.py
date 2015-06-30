@@ -122,6 +122,8 @@ class RouterStat(Enumeration):
     DEL_CLIENT = 2
     PACKET_IN = 3
     PACKET_OUT = 4
+    BYTES_IN = 5
+    BYTES_OUT = 6
 
 
 def string_to_ntp_date_time(datestr):

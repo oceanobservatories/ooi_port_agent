@@ -1,7 +1,9 @@
 from collections import Counter
 
 from twisted.internet import reactor
+from twisted.internet.interfaces import IPushProducer
 from twisted.python import log
+from zope.interface import implements
 
 from common import PacketType
 from common import EndpointType
@@ -20,6 +22,8 @@ class Router(object):
     """
     Route data to a group of endpoints based on endpoint type
     """
+    implements(IPushProducer)
+
     def __init__(self):
         """
         Initial route and client sets are empty. New routes are registered with add_route.
@@ -38,6 +42,7 @@ class Router(object):
         """
         self.routes = {}
         self.clients = {}
+        self.producers = set()
         self.statistics = Counter()
         for packet_type in PacketType.values():
             self.routes[packet_type] = set()
@@ -65,6 +70,7 @@ class Router(object):
         """
         for packet in packets:
             self.statistics[RouterStat.PACKET_IN] += 1
+            self.statistics[RouterStat.BYTES_IN] += packet.header.packet_size
 
             # delay formatting as string until needed
             # to avoid doing this work on antelope unless
@@ -81,6 +87,7 @@ class Router(object):
                     if data_format == Format.ASCII and format_map[Format.ASCII] is None:
                         format_map[Format.ASCII] = str(packet) + NEWLINE
                     self.statistics[RouterStat.PACKET_OUT] += 1
+                    self.statistics[RouterStat.BYTES_OUT] += packet.header.packet_size
                     client.write(format_map[data_format])
 
     def register(self, endpoint_type, source):
@@ -93,6 +100,11 @@ class Router(object):
         log.msg('REGISTER: %s %s' % (endpoint_type, source))
         self.clients[endpoint_type].add(source)
 
+        # attempt to support pausing for client endpoints
+        # only valid for playback agents!
+        if endpoint_type == EndpointType.CLIENT:
+            source.transport.registerProducer(self, True)
+
     def deregister(self, endpoint_type, source):
         """
         Deregister an endpoint that has been closed.
@@ -104,15 +116,44 @@ class Router(object):
         self.clients[endpoint_type].remove(source)
 
     def log_stats(self):
-        in_rate = self.statistics[RouterStat.PACKET_IN] / ROUTER_STATS_INTERVAL
-        out_rate = self.statistics[RouterStat.PACKET_OUT] / ROUTER_STATS_INTERVAL
-        log.msg('Router stats:: IN: %d (%.2f/s) OUT: %d (%.2f/s) REG: %d DEREG: %d' % (
+        interval = float(ROUTER_STATS_INTERVAL)
+        in_rate = self.statistics[RouterStat.PACKET_IN] / interval
+        out_rate = self.statistics[RouterStat.PACKET_OUT] / interval
+        in_byte_rate = self.statistics[RouterStat.BYTES_IN] / interval
+        out_byte_rate = self.statistics[RouterStat.BYTES_OUT] / interval
+        log.msg('Router stats:: (REG) IN: %d OUT: %d' % (
+            self.statistics[RouterStat.ADD_CLIENT],
+            self.statistics[RouterStat.DEL_CLIENT],
+        ))
+        log.msg('Router stats:: (PACKETS) IN: %d (%.2f/s) OUT: %d (%.2f/s)' % (
             self.statistics[RouterStat.PACKET_IN],
             in_rate,
             self.statistics[RouterStat.PACKET_OUT],
             out_rate,
-            self.statistics[RouterStat.ADD_CLIENT],
-            self.statistics[RouterStat.DEL_CLIENT],
+        ))
+        log.msg('Router stats:: (KB) IN: %d (%.2f/s) OUT: %d (%.2f/s)' % (
+            self.statistics[RouterStat.BYTES_IN] / 1000,
+            in_byte_rate / 1000,
+            self.statistics[RouterStat.BYTES_OUT] / 1000,
+            out_byte_rate / 1000,
         ))
         self.statistics.clear()
         reactor.callLater(ROUTER_STATS_INTERVAL, self.log_stats)
+
+    def registerProducer(self, producer):
+        self.producers.add(producer)
+
+    def deregisterProducer(self, producer):
+        self.producers.remove(producer)
+
+    def stopProducing(self):
+        for producer in self.producers:
+            producer.stopProducing()
+
+    def pauseProducing(self):
+        for producer in self.producers:
+            producer.pauseProducing()
+
+    def resumeProducing(self):
+        for producer in self.producers:
+            producer.resumeProducing()

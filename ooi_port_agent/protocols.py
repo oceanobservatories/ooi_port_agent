@@ -39,6 +39,13 @@ class PortAgentProtocol(Protocol):
         Register this protocol with the router
         """
         self.port_agent.router.register(self.endpoint_type, self)
+        # The default transport buffer size is 2^16 bytes
+        # this is about one packet for the broadband hydrophones.
+        # We need a deeper buffer to provide decent throughput.
+        # The buffer is still actually unbounded, this just defines
+        # the threshold for a call to pauseProducing if it is supported
+        # by the producer
+        self.transport.bufferSize *= 10
 
     def connectionLost(self, reason=connectionDone):
         """

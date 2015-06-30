@@ -5,7 +5,7 @@ from twisted.internet import reactor
 from twisted.python import log
 from agents import PortAgent
 from antelope import Pkt
-from antelope.orb import orbopen
+from antelope.orb import Orb
 from antelope.orb import OrbIncompleteException
 from antelope.orb import ORBOLDEST
 from common import PacketType, NEWLINE
@@ -29,9 +29,11 @@ class OrbThread(threading.Thread):
 
     def run(self):
         while self.port_agent.keep_going:
-            reactor.callFromThread(self.port_agent.router.got_data, get_one(self.orb))
-            time.sleep(.1)
-
+            if not self.port_agent._pause:
+                reactor.callFromThread(self.port_agent.router.got_data, get_one(self.orb))
+                time.sleep(.0001)
+            else:
+                time.sleep(.001)
 
 
 class AntelopePortAgent(PortAgent):
@@ -40,16 +42,27 @@ class AntelopePortAgent(PortAgent):
         self.inst_addr = config['instaddr']
         self.inst_port = config['instport']
         self.keep_going = False
-        self.orb = orbopen('%s:%d' % (self.inst_addr, self.inst_port))
+        self.orb = Orb('%s:%d' % (self.inst_addr, self.inst_port))
+        self.orb.connect()
         log.msg('Opened orb: %s' % self.orb)
         self.orb_thread = None
+        self._pause = False
+        self.router.registerProducer(self)
         reactor.addSystemEventTrigger('before', 'shutdown', self._orb_stop)
 
     def _register_loggers(self):
         """
         Overridden, no logging on antelope, antelope keeps track of its own data...
         """
-        # TODO: verify
+
+    def client_disconnected(self, connection):
+        """
+        Overridden to stop the running orb thread (if running) if all clients disconnect
+        """
+        super(AntelopePortAgent, self).client_disconnected(connection)
+        if len(self.clients) == 0:
+            log.msg('All clients disconnected, stopping orb thread if running')
+            self._orb_stop()
 
     def client_disconnected(self, connection):
         """
@@ -71,8 +84,8 @@ class AntelopePortAgent(PortAgent):
         command_protocol.register_command('orbget', self._orb_get)
 
     def _list_channels(self, *args):
-        with orbopen('%s:%d' % (self.inst_addr, self.inst_port)) as orb:
-            return Packet.create(json.dumps(orb.sources(), indent=1) + NEWLINE, PacketType.PA_STATUS)
+        sources = self.orb.sources()
+        return Packet.create(json.dumps(sources, indent=1) + NEWLINE, PacketType.PA_STATUS)
 
     def _set_select(self, command, *args):
         if len(args) == 0:
@@ -93,6 +106,7 @@ class AntelopePortAgent(PortAgent):
         return Packet.create(msg + NEWLINE, PacketType.PA_STATUS)
 
     def _orb_start(self, *args):
+        self._pause = False
         if self.orb_thread is None:
             self.keep_going = True
             self.orb_thread = OrbThread(self.orb, self)
@@ -122,6 +136,15 @@ class AntelopePortAgent(PortAgent):
             msg = 'DISCONNECTED'
         return Packet.create(msg + NEWLINE, PacketType.PA_STATUS)
 
+    def stopProducing(self):
+        self._orb_stop()
+
+    def pauseProducing(self):
+        self._pause = True
+
+    def resumeProducing(self):
+        self._pause = False
+
 
 def create_packets(orb_packet, pktid):
     packets = []
@@ -129,6 +152,7 @@ def create_packets(orb_packet, pktid):
         d = {'calib': channel.calib,
              'calper': channel.calper,
              'net': channel.net,
+             'loc': channel.loc,
              'sta': channel.sta,
              'chan': channel.chan,
              'data': channel.data,
