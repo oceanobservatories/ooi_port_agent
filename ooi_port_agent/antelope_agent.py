@@ -49,6 +49,15 @@ class AntelopePortAgent(PortAgent):
         """
         # TODO: verify
 
+    def client_disconnected(self, connection):
+        """
+        Overridden to stop the running orb thread (if running) if all clients disconnect
+        """
+        super(AntelopePortAgent, self).client_disconnected(connection)
+        if len(self.clients) == 0:
+            log.msg('All clients disconnected, stopping orb thread if running')
+            self._orb_stop()
+
     def register_commands(self, command_protocol):
         super(AntelopePortAgent, self).register_commands(command_protocol)
         log.msg('PortAgent register commands for protocol: %s' % command_protocol)

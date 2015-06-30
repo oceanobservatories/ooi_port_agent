@@ -35,6 +35,7 @@ class PortAgent(object):
 
         self.router = Router()
         self.connections = set()
+        self.clients = set()
 
         self._register_loggers()
         self._create_routes()
@@ -59,6 +60,7 @@ class PortAgent(object):
 
         # from INSTRUMENT
         self.router.add_route(PacketType.FROM_INSTRUMENT, EndpointType.CLIENT, data_format=Format.PACKET)
+        self.router.add_route(PacketType.PICKLED_FROM_INSTRUMENT, EndpointType.CLIENT, data_format=Format.PACKET)
 
         # from COMMAND SERVER
         self.router.add_route(PacketType.PA_COMMAND, EndpointType.COMMAND_HANDLER, data_format=Format.PACKET)
@@ -96,6 +98,14 @@ class PortAgent(object):
         packets = Packet.create('HB', PacketType.PA_HEARTBEAT)
         self.router.got_data(packets)
         reactor.callLater(HEARTBEAT_INTERVAL, self._heartbeat)
+
+    def client_connected(self, connection):
+        log.msg('CLIENT CONNECTED FROM ', connection)
+        self.clients.add(connection)
+
+    def client_disconnected(self, connection):
+        self.clients.remove(connection)
+        log.msg('CLIENT DISCONNECTED FROM ', connection)
 
     def instrument_connected(self, connection):
         log.msg('CONNECTED TO ', connection)

@@ -2,7 +2,7 @@ from twisted.internet.protocol import ReconnectingClientFactory, Factory
 from twisted.python import log
 from common import MAX_RECONNECT_DELAY
 from protocols import InstrumentProtocol, PortAgentProtocol, CommandProtocol, DigiInstrumentProtocol, \
-    DigiCommandProtocol
+    DigiCommandProtocol, PortAgentClientProtocol
 
 #################################################################################
 # Factories
@@ -49,7 +49,7 @@ class DataFactory(Factory):
     """
     This is the base class for incoming connections (data, command, sniffer)
     """
-    protocol = PortAgentProtocol
+    protocol = PortAgentClientProtocol
 
     def __init__(self, port_agent, packet_type, endpoint_type):
         self.port_agent = port_agent
