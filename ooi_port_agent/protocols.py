@@ -45,6 +45,22 @@ class PortAgentProtocol(Protocol):
         self.port_agent.router.deregister(self.endpoint_type, self)
 
 
+class PortAgentClientProtocol(PortAgentProtocol):
+    def connectionMade(self):
+        """
+        Register this protocol with the router and add to the port agent client list
+        """
+        self.port_agent.router.register(self.endpoint_type, self)
+        self.port_agent.client_connected(self)
+
+    def connectionLost(self, reason=connectionDone):
+        """
+        Connection lost, deregister with the router and remove from the port agent client list
+        """
+        self.port_agent.router.deregister(self.endpoint_type, self)
+        self.port_agent.client_disconnected(self)
+
+
 class InstrumentProtocol(PortAgentProtocol):
     """
     Overrides PortAgentProtocol for instrument state tracking
