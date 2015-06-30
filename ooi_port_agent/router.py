@@ -55,6 +55,7 @@ class Router(object):
         """
         Asynchronous callback from an endpoint. Packet will be routed as specified in the routing table.
         """
+        count = 0
         for packet in packets:
             self.statistics[RouterStat.PACKET_IN] += 1
 
@@ -72,8 +73,10 @@ class Router(object):
                     # create the ASCII format now if we actually need it
                     if data_format == Format.ASCII and format_map[Format.ASCII] is None:
                         format_map[Format.ASCII] = str(packet) + NEWLINE
-                    self.statistics[RouterStat.PACKET_OUT] += 1
+                    count += 1
                     client.write(format_map[data_format])
+        self.statistics[RouterStat.PACKET_OUT] += count
+        return count
 
     def register(self, endpoint_type, source):
         """

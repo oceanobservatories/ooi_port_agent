@@ -27,7 +27,14 @@ class OrbThread(threading.Thread):
 
     def run(self):
         while self.port_agent.keep_going:
-            reactor.callFromThread(self.port_agent.router.got_data, get_one(self.orb))
+            sent = reactor.callFromThread(self.port_agent.router.got_data, get_one(self.orb))
+            # no clients, stop sending
+            if sent == 0:
+                msg = Packet.create('No client for ORB packet, stopping orb thread\n', PacketType.PA_STATUS)
+                reactor.callFromThread(self.port_agent.router.got_data, msg)
+                # we can't call _orb_stop from here because it wants to join on this thread...
+                self.port_agent.orb_abort_from_thread()
+                break
             time.sleep(.1)
 
 
@@ -47,7 +54,6 @@ class AntelopePortAgent(PortAgent):
         """
         Overridden, no logging on antelope, antelope keeps track of its own data...
         """
-        # TODO: verify
 
     def register_commands(self, command_protocol):
         super(AntelopePortAgent, self).register_commands(command_protocol)
@@ -105,11 +111,15 @@ class AntelopePortAgent(PortAgent):
         self.router.got_data(get_one(self.orb))
 
     def get_state(self, *args):
-        if self.orb_thread is not None:
+        if self.orb is not None:
             msg = 'CONNECTED'
         else:
             msg = 'DISCONNECTED'
         return Packet.create(msg + NEWLINE, PacketType.PA_STATUS)
+
+    def orb_abort_from_thread(self):
+        self.keep_going = False
+        self.orb_thread = None
 
 
 def create_packets(orb_packet, pktid):
