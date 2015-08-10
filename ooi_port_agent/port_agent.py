@@ -2,19 +2,29 @@
 """
 Usage:
     port_agent.py --config <config_file>
-    port_agent.py tcp <port> <commandport> <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>]
-    port_agent.py rsn <port> <commandport> <instaddr> <instport> <digiport> [--sniff=<sniffport>] [--name=<name>]
-    port_agent.py botpt <port> <commandport> <instaddr> <rxport> <txport> [--sniff=<sniffport>] [--name=<name>]
-    port_agent.py camhd <port> <commandport> <instaddr> <subport> <reqport> [--sniff=<sniffport>] [--name=<name>]
-    port_agent.py antelope <port> <commandport> <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>]
+    port_agent.py tcp <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py tcp <port> <commandport> <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py rsn <instaddr> <instport> <digiport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py rsn <port> <commandport> <instaddr> <instport> <digiport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py botpt <instaddr> <rxport> <txport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py botpt <port> <commandport> <instaddr> <rxport> <txport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py camhd <instaddr> <subport> <reqport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py camhd <port> <commandport> <instaddr> <subport> <reqport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py antelope <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py antelope <port> <commandport> <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py datalog <files>...
     port_agent.py datalog <port> <commandport> <files>...
+    port_agent.py digilog_ascii <files>...
     port_agent.py digilog_ascii <port> <commandport> <files>...
+    port_agent.py chunky <files>...
     port_agent.py chunky <port> <commandport> <files>...
 
 Options:
     -h, --help          Show this screen.
     --sniff=<sniffport> Start a sniffer on this port
     --name=<name>       Name this port agent (for logfiles, otherwise commandport is used)
+    --refdes=<refdes>   Reference designator for this port agent (for consul local service ID, otherwise type is used)
+    --ttl=<ttl>         The TTL Check status interval of consul local service
 
 """
 import logging
@@ -64,17 +74,36 @@ def config_from_options(options):
         if options[_type]:
             config['type'] = _type
 
+    config['port'] = options.get('port', 0)
+    config['commandport'] = options.get('commandport', 0)
+
     sniff = options['--sniff']
     if sniff is not None:
         try:
             sniff = int(sniff)
         except (ValueError, TypeError):
             sniff = None
-    config['sniffport'] = sniff
+        config['sniffport'] = sniff
+    else:
+        config['sniffport'] = 0
 
     name = options['--name']
     if name is not None:
         config['name'] = name
+
+    refdes = options['--refdes']
+    if refdes is not None:
+        config['refdes'] = refdes
+
+    ttl = options['--ttl']
+    if ttl is not None:
+        try:
+            ttl = int(ttl)
+        except (ValueError, TypeError):
+            ttl = None
+        config['ttl'] = ttl
+    else:
+        config['ttl'] = 30
 
     return config
 
