@@ -46,9 +46,9 @@ class PortAgent(object):
         self.refdes = config.get('refdes', config['type'])
         self.ttl = config['ttl']
 
-        self.data_port_id = '%s-port-agent' % self.refdes
-        self.command_port_id = '%s-command-port-agent' % self.refdes
-        self.sniffer_port_id = '%s-sniff-port-agent' % self.refdes
+        self.data_port_id = 'port-agent_%s' % self.refdes
+        self.command_port_id = 'command_port_agent_%s' % self.refdes
+        self.sniffer_port_id = 'sniff_port_agent_%s' % self.refdes
 
         self.router = Router()
         self.connections = set()
