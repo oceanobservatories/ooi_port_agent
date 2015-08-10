@@ -3,6 +3,7 @@ import glob
 import json
 import re
 
+from treq import get, put
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet import reactor
 from twisted.python import log
@@ -25,7 +26,6 @@ from packet import PacketHeader
 from router import Router
 
 
-
 #################################################################################
 # Port Agents
 #
@@ -33,14 +33,22 @@ from router import Router
 # other port agents (CAMHD, Antelope) may require libraries which may not
 # exist on all machines
 #################################################################################
-
 class PortAgent(object):
+
+    _agent = 'http://localhost:8500/v1/agent/'
+
     def __init__(self, config):
         self.config = config
         self.data_port = config['port']
         self.command_port = config['commandport']
         self.sniff_port = config['sniffport']
         self.name = config.get('name', str(self.command_port))
+        self.refdes = config.get('refdes', config['type'])
+        self.ttl = config['ttl']
+
+        self.data_port_id = '%s-port-agent' % self.refdes
+        self.command_port_id = '%s-command-port-agent' % self.refdes
+        self.sniffer_port_id = '%s-sniff-port-agent' % self.refdes
 
         self.router = Router()
         self.connections = set()
@@ -89,23 +97,81 @@ class PortAgent(object):
         self.router.add_route(PacketType.DIGI_RSP, EndpointType.CLIENT, data_format=Format.PACKET)
         self.router.add_route(PacketType.DIGI_RSP, EndpointType.COMMAND, data_format=Format.RAW)
 
+    @staticmethod
+    def done(response, caller=''):
+        log.msg(caller + 'http response: %s' % response.code)
+
+    def data_port_cb(self, port):
+        self.data_port = port.getHost().port
+
+        values = {
+            'ID': self.data_port_id,
+            'Name': self.data_port_id,
+            'Port': self.data_port,
+            'Check': {'TTL': '%ss' % self.ttl}
+        }
+        put(self._agent + 'service/register',
+            data=json.dumps(values)).addCallback(self.done, caller='data_port_cb: ')
+
+        log.msg('data_port_cb: port is', self.data_port)
+
+    def command_port_cb(self, port):
+        self.command_port = port.getHost().port
+
+        values = {
+            'ID': self.command_port_id,
+            'Name': self.command_port_id,
+            'Port': self.command_port,
+            'Check': {'TTL': '%ss' % self.ttl}
+        }
+
+        put(self._agent + 'service/register',
+            data=json.dumps(values)).addCallback(self.done, caller='command_port_cb: ')
+
+        log.msg('command_port_cb: port is', self.command_port)
+
+    def sniff_port_cb(self, port):
+        self.sniff_port = port.getHost().port
+
+        values = {
+            'ID': self.sniffer_port_id,
+            'Name': self.sniffer_port_id,
+            'Port': self.sniff_port,
+            'Check': {'TTL': '%ss' % self.ttl}
+        }
+
+        put(self._agent + 'service/register',
+            data=json.dumps(values)).addCallback(self.done, caller='sniff_port_cb: ')
+
+        log.msg('sniff_port_cb: port is', self.sniff_port)
+
     def _start_servers(self):
         self.data_endpoint = TCP4ServerEndpoint(reactor, self.data_port)
-        self.data_endpoint.listen(DataFactory(self, PacketType.FROM_DRIVER, EndpointType.CLIENT))
+        data_deferred = self.data_endpoint.listen(DataFactory(self, PacketType.FROM_DRIVER, EndpointType.CLIENT))
+        data_deferred.addCallback(self.data_port_cb)
 
         self.command_endpoint = TCP4ServerEndpoint(reactor, self.command_port)
-        self.command_endpoint.listen(CommandFactory(self, PacketType.PA_COMMAND, EndpointType.COMMAND))
+        command_deferred = self.command_endpoint.listen(CommandFactory(self, PacketType.PA_COMMAND, EndpointType.COMMAND))
+        command_deferred.addCallback(self.command_port_cb)
 
-        if self.sniff_port:
-            self.sniff_port = int(self.sniff_port)
-            self.sniff_endpoint = TCP4ServerEndpoint(reactor, self.sniff_port)
-            self.sniff_endpoint.listen(DataFactory(self, PacketType.UNKNOWN, EndpointType.LOGGER))
-        else:
-            self.sniff_endpoint = None
+        self.sniff_port = int(self.sniff_port)
+        self.sniff_endpoint = TCP4ServerEndpoint(reactor, self.sniff_port)
+        sniff_deferred = self.sniff_endpoint.listen(DataFactory(self, PacketType.UNKNOWN, EndpointType.LOGGER))
+        sniff_deferred.addCallback(self.sniff_port_cb)
 
     def _heartbeat(self):
         packets = Packet.create('HB', PacketType.PA_HEARTBEAT)
         self.router.got_data(packets)
+
+        # Set TTL Check Status
+        check_string = self._agent + 'check/pass/service:'
+        get(check_string + self.data_port_id).addCallback(
+            self.done, caller='%s TTL check status: ' % self.data_port_id)
+        get(check_string + self.command_port_id).addCallback(
+            self.done, caller='%s TTL check status: ' % self.command_port_id)
+        get(check_string + self.sniffer_port_id).addCallback(
+            self.done, caller='%s TTL check status: ' % self.sniffer_port_id)
+
         reactor.callLater(HEARTBEAT_INTERVAL, self._heartbeat)
 
     def client_connected(self, connection):

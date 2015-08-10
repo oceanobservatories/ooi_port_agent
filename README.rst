@@ -1,6 +1,6 @@
 The port agent is a process which lives in between instrument driver and instrument
-and manages the physical connectionto the instrument. It has all the logic internally
-to manage the connection and broker data between between the instrument and driver.
+and manages the physical connection to the instrument. It has all the logic internally
+to manage the connection and broker data between the instrument and driver.
 
 In addition to a connection to the instrument driver, other processes can connect to the port agent,
 via publisher connections, and listen in to all communications. These connections are read only.
