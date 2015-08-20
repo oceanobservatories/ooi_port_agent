@@ -1,9 +1,8 @@
 from __future__ import division
 import glob
 import json
-import re
 
-from treq import get, put
+import re
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet import reactor
 from twisted.python import log
@@ -21,6 +20,7 @@ from factories import CommandFactory
 from factories import InstrumentClientFactory
 from factories import DigiInstrumentClientFactory
 from factories import DigiCommandClientFactory
+from ooi_port_agent.web import get, put
 from packet import Packet
 from packet import PacketHeader
 from router import Router
@@ -34,7 +34,6 @@ from router import Router
 # exist on all machines
 #################################################################################
 class PortAgent(object):
-
     _agent = 'http://localhost:8500/v1/agent/'
 
     def __init__(self, config):
@@ -46,9 +45,12 @@ class PortAgent(object):
         self.refdes = config.get('refdes', config['type'])
         self.ttl = config['ttl']
 
-        self.data_port_id = 'port-agent_%s' % self.refdes
-        self.command_port_id = 'command_port_agent_%s' % self.refdes
-        self.sniffer_port_id = 'sniff_port_agent_%s' % self.refdes
+        self.data_name = 'port-agent'
+        self.command_name = 'command-port-agent'
+        self.sniffer_name = 'sniff-port-agent'
+        self.data_port_id = '%s-%s' % (self.data_name, self.refdes)
+        self.command_port_id = '%s-%s' % (self.command_name, self.refdes)
+        self.sniffer_port_id = '%s-%s' % (self.sniffer_name, self.refdes)
 
         self.router = Router()
         self.connections = set()
@@ -106,12 +108,12 @@ class PortAgent(object):
 
         values = {
             'ID': self.data_port_id,
-            'Name': self.data_port_id,
+            'Name': self.data_name,
             'Port': self.data_port,
-            'Check': {'TTL': '%ss' % self.ttl}
+            'Check': {'TTL': '%ss' % self.ttl},
+            'Tags': [self.refdes]
         }
-        put(self._agent + 'service/register',
-            data=json.dumps(values)).addCallback(self.done, caller='data_port_cb: ')
+        put(self._agent + 'service/register', json.dumps(values)).addCallback(self.done, caller='data_port_cb: ')
 
         log.msg('data_port_cb: port is', self.data_port)
 
@@ -120,13 +122,13 @@ class PortAgent(object):
 
         values = {
             'ID': self.command_port_id,
-            'Name': self.command_port_id,
+            'Name': self.command_name,
             'Port': self.command_port,
-            'Check': {'TTL': '%ss' % self.ttl}
+            'Check': {'TTL': '%ss' % self.ttl},
+            'Tags': [self.refdes]
         }
 
-        put(self._agent + 'service/register',
-            data=json.dumps(values)).addCallback(self.done, caller='command_port_cb: ')
+        put(self._agent + 'service/register', json.dumps(values)).addCallback(self.done, caller='command_port_cb: ')
 
         log.msg('command_port_cb: port is', self.command_port)
 
@@ -135,13 +137,13 @@ class PortAgent(object):
 
         values = {
             'ID': self.sniffer_port_id,
-            'Name': self.sniffer_port_id,
+            'Name': self.sniffer_name,
             'Port': self.sniff_port,
-            'Check': {'TTL': '%ss' % self.ttl}
+            'Check': {'TTL': '%ss' % self.ttl},
+            'Tags': [self.refdes]
         }
 
-        put(self._agent + 'service/register',
-            data=json.dumps(values)).addCallback(self.done, caller='sniff_port_cb: ')
+        put(self._agent + 'service/register', json.dumps(values)).addCallback(self.done, caller='sniff_port_cb: ')
 
         log.msg('sniff_port_cb: port is', self.sniff_port)
 
@@ -151,7 +153,8 @@ class PortAgent(object):
         data_deferred.addCallback(self.data_port_cb)
 
         self.command_endpoint = TCP4ServerEndpoint(reactor, self.command_port)
-        command_deferred = self.command_endpoint.listen(CommandFactory(self, PacketType.PA_COMMAND, EndpointType.COMMAND))
+        command_deferred = self.command_endpoint.listen(
+            CommandFactory(self, PacketType.PA_COMMAND, EndpointType.COMMAND))
         command_deferred.addCallback(self.command_port_cb)
 
         self.sniff_port = int(self.sniff_port)
@@ -218,6 +221,7 @@ class TcpPortAgent(PortAgent):
     Data from the instrument connection is routed to all connected clients.
     Data from the client(s) is routed to the instrument connection
     """
+
     def __init__(self, config):
         super(TcpPortAgent, self).__init__(config)
         self.inst_addr = config['instaddr']
@@ -265,6 +269,7 @@ class BotptPortAgent(PortAgent):
     Data from the instrument RX connection is routed to all connected clients.
     Data from the client(s) is routed to the instrument TX connection
     """
+
     def __init__(self, config):
         super(BotptPortAgent, self).__init__(config)
         self.inst_rx_port = config['rxport']
@@ -374,7 +379,8 @@ class DigiDatalogAsciiPortAgent(DatalogReadingPortAgent):
                 payload = match.group(2)
                 try:
                     packet_time = string_to_ntp_date_time(match.group(1))
-                    header = PacketHeader(packet_type=PacketType.FROM_INSTRUMENT, payload_size=len(payload), packet_time=packet_time)
+                    header = PacketHeader(packet_type=PacketType.FROM_INSTRUMENT, payload_size=len(payload),
+                                          packet_time=packet_time)
                     header.set_checksum(payload)
                     packet = Packet(payload=payload, header=header)
                     self.router.got_data([packet])
@@ -429,4 +435,3 @@ class ChunkyDatalogPortAgent(DatalogReadingPortAgent):
 
         # allow the reactor loop to process other events
         reactor.callLater(0.01, self._read)
-
