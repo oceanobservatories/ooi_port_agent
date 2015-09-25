@@ -76,6 +76,7 @@ class AgentTypes(Enumeration):
     TCP = 'tcp'
     RSN = 'rsn'
     BOTPT = 'botpt'
+    CAMDS = 'camds'
     CAMHD = 'camhd'
     ANTELOPE = 'antelope'
     DATALOG = 'datalog'
