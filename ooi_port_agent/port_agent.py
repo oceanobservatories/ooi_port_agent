@@ -8,6 +8,8 @@ Usage:
     port_agent.py rsn <port> <commandport> <instaddr> <instport> <digiport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
     port_agent.py botpt <instaddr> <rxport> <txport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
     port_agent.py botpt <port> <commandport> <instaddr> <rxport> <txport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py camds <instaddr> <instport> <imgdir> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py camds <port> <commandport> <instaddr> <instport> <imgdir> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
     port_agent.py camhd <instaddr> <subport> <reqport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
     port_agent.py camhd <port> <commandport> <instaddr> <subport> <reqport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
     port_agent.py antelope <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
@@ -43,6 +45,7 @@ from agents import DatalogReadingPortAgent
 from agents import DigiDatalogAsciiPortAgent
 from agents import ChunkyDatalogPortAgent
 
+from camds_agent import CamdsPortAgent
 
 def configure_logging():
     log_format = '%(asctime)-15s %(levelname)s %(message)s'
@@ -130,6 +133,7 @@ def main():
         AgentTypes.DATALOG: DatalogReadingPortAgent,
         AgentTypes.DIGILOG_ASCII: DigiDatalogAsciiPortAgent,
         AgentTypes.CHUNKY: ChunkyDatalogPortAgent,
+        AgentTypes.CAMDS: CamdsPortAgent,
         AgentTypes.CAMHD: CamhdPortAgent,
         AgentTypes.ANTELOPE: AntelopePortAgent
     }
