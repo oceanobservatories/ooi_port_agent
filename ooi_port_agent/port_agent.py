@@ -14,12 +14,6 @@ Usage:
     port_agent.py camhd <port> <commandport> <instaddr> <subport> <reqport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
     port_agent.py antelope <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
     port_agent.py antelope <port> <commandport> <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py datalog <files>...
-    port_agent.py datalog <port> <commandport> <files>...
-    port_agent.py digilog_ascii <files>...
-    port_agent.py digilog_ascii <port> <commandport> <files>...
-    port_agent.py chunky <files>...
-    port_agent.py chunky <port> <commandport> <files>...
 
 Options:
     -h, --help          Show this screen.
@@ -41,11 +35,8 @@ from common import AgentTypes
 from agents import TcpPortAgent
 from agents import RsnPortAgent
 from agents import BotptPortAgent
-from agents import DatalogReadingPortAgent
-from agents import DigiDatalogAsciiPortAgent
-from agents import ChunkyDatalogPortAgent
-
 from camds_agent import CamdsPortAgent
+
 
 def configure_logging():
     log_format = '%(asctime)-15s %(levelname)s %(message)s'
@@ -130,9 +121,6 @@ def main():
         AgentTypes.TCP: TcpPortAgent,
         AgentTypes.RSN: RsnPortAgent,
         AgentTypes.BOTPT: BotptPortAgent,
-        AgentTypes.DATALOG: DatalogReadingPortAgent,
-        AgentTypes.DIGILOG_ASCII: DigiDatalogAsciiPortAgent,
-        AgentTypes.CHUNKY: ChunkyDatalogPortAgent,
         AgentTypes.CAMDS: CamdsPortAgent,
         AgentTypes.CAMHD: CamhdPortAgent,
         AgentTypes.ANTELOPE: AntelopePortAgent

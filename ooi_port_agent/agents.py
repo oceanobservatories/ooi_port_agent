@@ -1,8 +1,6 @@
 from __future__ import division
-import glob
 import json
 
-import re
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet import reactor
 from twisted.python import log
@@ -14,7 +12,6 @@ from common import PacketType
 from common import Format
 from common import HEARTBEAT_INTERVAL
 from common import NEWLINE
-from common import string_to_ntp_date_time
 from factories import DataFactory
 from factories import CommandFactory
 from factories import InstrumentClientFactory
@@ -22,7 +19,6 @@ from factories import DigiInstrumentClientFactory
 from factories import DigiCommandClientFactory
 from ooi_port_agent.web import get, put
 from packet import Packet
-from packet import PacketHeader
 from router import Router
 
 
@@ -284,154 +280,3 @@ class BotptPortAgent(PortAgent):
         tx_factory = InstrumentClientFactory(self, PacketType.UNKNOWN, EndpointType.INSTRUMENT)
         reactor.connectTCP(self.inst_addr, self.inst_rx_port, rx_factory)
         reactor.connectTCP(self.inst_addr, self.inst_tx_port, tx_factory)
-
-
-class DatalogReadingPortAgent(PortAgent):
-    def __init__(self, config):
-        super(DatalogReadingPortAgent, self).__init__(config)
-        self.files = []
-        for each in config['files']:
-            self.files.extend(glob.glob(each))
-
-        self.files.sort()
-        self._filehandle = None
-        self.target_types = [PacketType.FROM_INSTRUMENT, PacketType.PA_CONFIG]
-        self._start_when_ready()
-
-    def _register_loggers(self):
-        """
-        Overridden, no logging when reading a datalog...
-        """
-        pass
-
-    def _start_when_ready(self):
-        log.msg('waiting for a client connection', self.router.clients[EndpointType.INSTRUMENT_DATA])
-        if len(self.router.clients[EndpointType.CLIENT]) > 0:
-            self._read()
-        else:
-            reactor.callLater(1.0, self._start_when_ready)
-
-    def _read(self):
-        """
-        Read one packet, publish if appropriate, then return.
-        We must not read all packets in a loop here, or we will not actually publish them until the end...
-        """
-        if self._filehandle is None and not self.files:
-            log.msg('Completed reading specified port agent logs, exiting...')
-            reactor.stop()
-            return
-
-        if self._filehandle is None:
-            name = self.files.pop(0)
-            log.msg('Begin reading:', name)
-            self._filehandle = open(name, 'r')
-
-        packet = Packet.packet_from_fh(self._filehandle)
-        if packet is not None:
-            if packet.header.packet_type in self.target_types:
-                self.router.got_data([packet])
-
-        else:
-            self._filehandle.close()
-            self._filehandle = None
-
-        # allow the reactor loop to process other events
-        reactor.callLater(0.01, self._read)
-
-
-class DigiDatalogAsciiPortAgent(DatalogReadingPortAgent):
-    def __init__(self, config):
-        super(DigiDatalogAsciiPortAgent, self).__init__(config)
-        self.ooi_ts_regex = re.compile(r'<OOI-TS (.+?) [TX][NS]>\r\n(.*?)<\\OOI-TS>', re.DOTALL)
-        self.buffer = ''
-        self.MAXBUF = 65535
-
-        # special case for RSN archived data
-        # if all files have date_UTC in filename then sort by that
-        def search_utc(f):
-            match = re.search('(\d+T\d+_UTC)', f)
-            if match is None:
-                return None
-            else:
-                return match.group(1)
-
-        if all((search_utc(f) for f in self.files)):
-            self.files.sort(key=search_utc)
-
-    def _read(self):
-        """
-        Read a chunk of data and inspect it for a complete DIGI ASCII record. When found, publish.
-        """
-        if self._filehandle is None and not self.files:
-            log.msg('Completed reading specified port agent logs')
-            return
-
-        if self._filehandle is None:
-            name = self.files.pop(0)
-            log.msg('Begin reading:', name)
-            self._filehandle = open(name, 'r')
-
-        chunk = self._filehandle.read(1024)
-        if chunk != '':
-            self.buffer += chunk
-            new_index = 0
-            for match in self.ooi_ts_regex.finditer(self.buffer):
-                payload = match.group(2)
-                try:
-                    packet_time = string_to_ntp_date_time(match.group(1))
-                    header = PacketHeader(packet_type=PacketType.FROM_INSTRUMENT, payload_size=len(payload),
-                                          packet_time=packet_time)
-                    header.set_checksum(payload)
-                    packet = Packet(payload=payload, header=header)
-                    self.router.got_data([packet])
-                except ValueError:
-                    log.err('Unable to extract timestamp from record: %r' % match.group())
-                new_index = match.end()
-
-            if new_index > 0:
-                self.buffer = self.buffer[new_index:]
-
-            if len(self.buffer) > self.MAXBUF:
-                self.buffer = self.buffer[-self.MAXBUF:]
-
-        else:
-            self._filehandle.close()
-            self._filehandle = None
-
-        # allow the reactor loop to process other events
-        reactor.callLater(0.01, self._read)
-
-
-class ChunkyDatalogPortAgent(DatalogReadingPortAgent):
-    def __init__(self, config):
-        super(ChunkyDatalogPortAgent, self).__init__(config)
-
-    def _read(self):
-        """
-        Read one line at a time, publish as a packet with TS of 0
-        It is expected that the driver will use the internal timestamp
-        of the record as the definitive timestamp
-        """
-        if self._filehandle is None and not self.files:
-            log.msg('Completed reading specified port agent logs, exiting...')
-            reactor.stop()
-            return
-
-        if self._filehandle is None:
-            name = self.files.pop(0)
-            log.msg('Begin reading:', name)
-            self._filehandle = open(name, 'r')
-
-        data = self._filehandle.read(1024)
-        if data != '':
-            header = PacketHeader(packet_type=PacketType.FROM_INSTRUMENT, payload_size=len(data), packet_time=0)
-            header.set_checksum(data)
-            packet = [Packet(payload=data, header=header)]
-            self.router.got_data(packet)
-
-        else:
-            self._filehandle.close()
-            self._filehandle = None
-
-        # allow the reactor loop to process other events
-        reactor.callLater(0.01, self._read)

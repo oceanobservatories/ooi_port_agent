@@ -79,9 +79,6 @@ class AgentTypes(Enumeration):
     CAMDS = 'camds'
     CAMHD = 'camhd'
     ANTELOPE = 'antelope'
-    DATALOG = 'datalog'
-    DIGILOG_ASCII = 'digilog_ascii'
-    CHUNKY = 'chunky'
 
 
 class Format(Enumeration):
