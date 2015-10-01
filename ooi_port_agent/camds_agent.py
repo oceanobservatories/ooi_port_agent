@@ -54,6 +54,7 @@ class CamdsPortAgent(TcpPortAgent):
         download_factory = RetrieveFileFactory(userID, password, client_machine_name, server_name, use_ntlm_v2=True)
 
         download_factory.instrument_ip = self.inst_addr
+        download_factory.router = self.router
         download_factory.create_image_dir(self.name, self.img_dir_root)
 
         reactor.connectTCP(self.inst_addr, 139, download_factory)
@@ -94,6 +95,7 @@ class RetrieveFileFactory(SMBProtocolFactory):
 
     instrument_ip = None
     ref_des = None
+    router = None
     img_dir_root = IMG_DIR_ROOT
 
     def __init__(self, *args, **kwargs):
@@ -121,6 +123,7 @@ class RetrieveFileFactory(SMBProtocolFactory):
         # try to reconnect
         download_factory = RetrieveFileFactory(self.username, self.password, self.my_name, self.remote_name, use_ntlm_v2=True)
         download_factory.instrument_ip = self.instrument_ip
+        download_factory.router = self.router
         download_factory.create_image_dir(self.ref_des, self.img_dir_root)
 
         reactor.connectTCP(self.instrument_ip, 139, download_factory)
@@ -140,7 +143,7 @@ class RetrieveFileFactory(SMBProtocolFactory):
 
             # cleanup any unfinished downloads
             if f.endswith('.part'):
-                log.msg("cleaning up partially downloaded file: %r", f)
+                log.msg("cleaning up partially downloaded file: ", f)
                 os.remove(os.path.join(self.image_dir, f))
             elif f.endswith('.png'):
                 self.retrieved_file_queue.append(f)
@@ -189,7 +192,7 @@ class RetrieveFileFactory(SMBProtocolFactory):
 
                 # Send a message to the driver indicating that a new image has been listed
                 # The driver will then associate metadata with the image file name
-                packets = Packet.create('New Image:' + file_name, PacketType.FROM_INSTRUMENT)
+                packets = Packet.create('New Image:' + str(file_name), PacketType.FROM_INSTRUMENT)
                 self.router.got_data(packets)
 
         reactor.callLater(0, self.fetch_file)
@@ -215,10 +218,14 @@ class RetrieveFileFactory(SMBProtocolFactory):
         reactor.callLater(0, self.fetch_file)
 
     # Error callbacks, or 'errbacks'
-    def fileListingError(self, smb_timeout):
-        log.msg('Error trying to list files from CAMDS share. Will attempt once again.')
+    def fileListingError(self, fail_msg):
+        log.msg('Error trying to list files from CAMDS share:')
+        log.err(str(fail_msg))
+        log.msg('Will attempt to list files once again...')
         reactor.callLater(1, self.list_files)
 
-    def fileRetrieveError(self, smb_timeout):
-        log.msg('Error retrieving file from CAMDS share. Will attempt to download again.')
+    def fileRetrieveError(self, fail_msg):
+        log.msg('Error retrieving file from CAMDS share:')
+        log.err(str(fail_msg))
+        log.msg('Will attempt to download again...')
         reactor.callLater(1, self.list_files)
