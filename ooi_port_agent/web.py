@@ -7,6 +7,7 @@ from zope.interface import implements
 
 __author__ = 'petercable'
 
+
 class StringProducer(object):
     implements(IBodyProducer)
 
@@ -28,6 +29,7 @@ class StringProducer(object):
 def get(url):
     agent = Agent(reactor)
     return agent.request('GET', url)
+
 
 def put(url, data):
     agent = Agent(reactor)
