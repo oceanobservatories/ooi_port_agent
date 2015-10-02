@@ -55,7 +55,7 @@ class CamdsPortAgent(TcpPortAgent):
 
         download_factory.instrument_ip = self.inst_addr
         download_factory.router = self.router
-        download_factory.create_image_dir(self.name, self.img_dir_root)
+        download_factory.create_image_dir(self.refdes, self.img_dir_root)
 
         reactor.connectTCP(self.inst_addr, 139, download_factory)
 
