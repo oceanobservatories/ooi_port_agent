@@ -34,10 +34,9 @@ class PortAgent(object):
 
     def __init__(self, config):
         self.config = config
-        self.data_port = config['port']
-        self.command_port = config['commandport']
-        self.sniff_port = config['sniffport']
-        self.name = config.get('name', str(self.command_port))
+        self.data_port = 0
+        self.command_port = 0
+        self.sniff_port = 0
         self.refdes = config.get('refdes', config['type'])
         self.ttl = config['ttl']
 
@@ -60,8 +59,8 @@ class PortAgent(object):
         log.msg('Base PortAgent initialization complete')
 
     def _register_loggers(self):
-        self.data_logger = DailyLogFile('%s.datalog' % self.name, '.')
-        self.ascii_logger = DailyLogFile('%s.log' % self.name, '.')
+        self.data_logger = DailyLogFile('%s.datalog' % self.refdes, '.')
+        self.ascii_logger = DailyLogFile('%s.log' % self.refdes, '.')
         self.router.register(EndpointType.DATALOGGER, self.data_logger)
         self.router.register(EndpointType.LOGGER, self.ascii_logger)
 
@@ -109,7 +108,9 @@ class PortAgent(object):
             'Check': {'TTL': '%ss' % self.ttl},
             'Tags': [self.refdes]
         }
-        put(self._agent + 'service/register', json.dumps(values)).addCallback(self.done, caller='data_port_cb: ')
+        d = put(self._agent + 'service/register', json.dumps(values))
+        d.addCallback(self.done, caller='data_port_cb: ')
+        d.addErrback(log.msg, 'Error registering data port')
 
         log.msg('data_port_cb: port is', self.data_port)
 
@@ -124,7 +125,9 @@ class PortAgent(object):
             'Tags': [self.refdes]
         }
 
-        put(self._agent + 'service/register', json.dumps(values)).addCallback(self.done, caller='command_port_cb: ')
+        d = put(self._agent + 'service/register', json.dumps(values))
+        d.addCallback(self.done, caller='command_port_cb: ')
+        d.addErrback(log.msg, 'Error registering command port')
 
         log.msg('command_port_cb: port is', self.command_port)
 
@@ -139,7 +142,9 @@ class PortAgent(object):
             'Tags': [self.refdes]
         }
 
-        put(self._agent + 'service/register', json.dumps(values)).addCallback(self.done, caller='sniff_port_cb: ')
+        d = put(self._agent + 'service/register', json.dumps(values))
+        d.addCallback(self.done, caller='sniff_port_cb: ')
+        d.addErrback(log.msg, 'Error registering sniff port')
 
         log.msg('sniff_port_cb: port is', self.sniff_port)
 
@@ -164,12 +169,15 @@ class PortAgent(object):
 
         # Set TTL Check Status
         check_string = self._agent + 'check/pass/service:'
-        get(check_string + self.data_port_id).addCallback(
-            self.done, caller='%s TTL check status: ' % self.data_port_id)
-        get(check_string + self.command_port_id).addCallback(
-            self.done, caller='%s TTL check status: ' % self.command_port_id)
-        get(check_string + self.sniffer_port_id).addCallback(
-            self.done, caller='%s TTL check status: ' % self.sniffer_port_id)
+        d = get(check_string + self.data_port_id)
+        d.addCallback(self.done, caller='%s TTL check status: ' % self.data_port_id)
+        d.addErrback(log.msg, 'Error sending check for data port')
+        d = get(check_string + self.command_port_id)
+        d.addCallback(self.done, caller='%s TTL check status: ' % self.command_port_id)
+        d.addErrback(log.msg, 'Error sending check for command port')
+        d = get(check_string + self.sniffer_port_id)
+        d.addCallback(self.done, caller='%s TTL check status: ' % self.sniffer_port_id)
+        d.addErrback(log.msg, 'Error sending check for sniff port')
 
         reactor.callLater(HEARTBEAT_INTERVAL, self._heartbeat)
 

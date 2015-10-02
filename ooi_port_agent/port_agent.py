@@ -2,24 +2,15 @@
 """
 Usage:
     port_agent.py --config <config_file>
-    port_agent.py tcp <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py tcp <port> <commandport> <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py rsn <instaddr> <instport> <digiport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py rsn <port> <commandport> <instaddr> <instport> <digiport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py botpt <instaddr> <rxport> <txport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py botpt <port> <commandport> <instaddr> <rxport> <txport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py camds <instaddr> <instport> <imgdir> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py camds <port> <commandport> <instaddr> <instport> <imgdir> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py camhd <instaddr> <subport> <reqport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py camhd <port> <commandport> <instaddr> <subport> <reqport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py antelope <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
-    port_agent.py antelope <port> <commandport> <instaddr> <instport> [--sniff=<sniffport>] [--name=<name>] [--refdes=<refdes>] [--ttl=<ttl>]
+    port_agent.py tcp <instaddr> <instport> <refdes> [--ttl=<ttl>]
+    port_agent.py rsn <instaddr> <instport> <digiport> <refdes> [--ttl=<ttl>]
+    port_agent.py botpt <instaddr> <rxport> <txport> <refdes> [--ttl=<ttl>]
+    port_agent.py camds <instaddr> <instport> <imgdir> <refdes> [--ttl=<ttl>]
+    port_agent.py camhd <instaddr> <subport> <reqport> <refdes> [--ttl=<ttl>]
+    port_agent.py antelope <instaddr> <instport> <refdes> [--ttl=<ttl>]
 
 Options:
     -h, --help          Show this screen.
-    --sniff=<sniffport> Start a sniffer on this port
-    --name=<name>       Name this port agent (for logfiles, otherwise commandport is used)
-    --refdes=<refdes>   Reference designator for this port agent (for consul local service ID, otherwise type is used)
     --ttl=<ttl>         The TTL Check status interval of consul local service
 
 """
@@ -48,6 +39,7 @@ def configure_logging():
 
 
 def config_from_options(options):
+    print options
     if options['--config']:
         return yaml.load(open(options['--config']))
 
@@ -59,7 +51,7 @@ def config_from_options(options):
                 try:
                     config[name] = int(options[option])
                 except (ValueError, TypeError):
-                    config[name] = 0    # default to a random port
+                    config[name] = 0
             else:
                 config[name] = options[option]
 
@@ -67,24 +59,6 @@ def config_from_options(options):
     for _type in AgentTypes.values():
         if options[_type]:
             config['type'] = _type
-
-    sniff = options['--sniff']
-    if sniff is not None:
-        try:
-            sniff = int(sniff)
-        except (ValueError, TypeError):
-            sniff = None
-        config['sniffport'] = sniff
-    else:
-        config['sniffport'] = 0
-
-    name = options['--name']
-    if name is not None:
-        config['name'] = name
-
-    refdes = options['--refdes']
-    if refdes is not None:
-        config['refdes'] = refdes
 
     ttl = options['--ttl']
     if ttl is not None:
