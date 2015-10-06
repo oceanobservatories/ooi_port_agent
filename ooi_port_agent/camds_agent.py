@@ -2,7 +2,9 @@
 
 import time
 import os
+import re
 import collections
+import fnmatch
 
 from twisted.internet import reactor, defer
 from twisted.python import log
@@ -20,6 +22,9 @@ MAX_NUM_FILES = 1000
 DOWNLOAD_TIMEOUT = 120
 
 IMG_DIR_ROOT = '/home/asadev/camds_images/'
+
+IMG_REGEX = '.*(\d{4})(\d{2})(\d{2})T.*png'
+IMG_PATTERN = re.compile(IMG_REGEX, re.DOTALL)
 
 
 class CamdsPortAgent(TcpPortAgent):
@@ -51,11 +56,8 @@ class CamdsPortAgent(TcpPortAgent):
 
         log.msg('Server name: ', server_name)
 
-        download_factory = RetrieveFileFactory(userID, password, client_machine_name, server_name, use_ntlm_v2=True)
-
-        download_factory.instrument_ip = self.inst_addr
-        download_factory.router = self.router
-        download_factory.create_image_dir(self.refdes, self.img_dir_root)
+        download_factory = RetrieveFileFactory(self.inst_addr, self.router, self.refdes, self.img_dir_root, userID,
+                                               password, client_machine_name, server_name, use_ntlm_v2=True)
 
         reactor.connectTCP(self.inst_addr, 139, download_factory)
 
@@ -93,15 +95,17 @@ class FixedProtocol(SMBProtocol):
 class RetrieveFileFactory(SMBProtocolFactory):
     protocol = FixedProtocol
 
-    instrument_ip = None
-    ref_des = None
-    router = None
-    img_dir_root = IMG_DIR_ROOT
-
-    def __init__(self, *args, **kwargs):
+    def __init__(self, inst_addr, router, ref_des, img_dir_root, *args, **kwargs):
         SMBProtocolFactory.__init__(self, *args, **kwargs)
         self.d = defer.Deferred()
-        self.image_dir = IMG_DIR_ROOT + 'UNKNOWN_CAMDS_IMAGES'
+        self.instrument_ip = inst_addr
+        self.router = router
+        self.ref_des = ref_des
+
+        self.img_dir_root = img_dir_root
+        self.image_dir = self.img_dir_root + self.ref_des
+        if not os.path.exists(self.image_dir):
+            os.makedirs(self.image_dir)
 
         self.pending_file_queue = collections.deque('')
         self.retrieved_file_queue = collections.deque('', MAX_NUM_FILES)
@@ -121,32 +125,30 @@ class RetrieveFileFactory(SMBProtocolFactory):
 
     def reconnect(self):
         # try to reconnect
-        download_factory = RetrieveFileFactory(self.username, self.password, self.my_name, self.remote_name, use_ntlm_v2=True)
-        download_factory.instrument_ip = self.instrument_ip
-        download_factory.router = self.router
-        download_factory.create_image_dir(self.ref_des, self.img_dir_root)
+        download_factory = RetrieveFileFactory(self.instrument_ip, self.router, self.ref_des, self.img_dir_root,
+                                               self.username, self.password, self.my_name, self.remote_name,
+                                               use_ntlm_v2=True)
 
         reactor.connectTCP(self.instrument_ip, 139, download_factory)
 
-    def create_image_dir(self, ref_des, img_dir_root):
-        self.ref_des = ref_des
-        self.img_dir_root = img_dir_root
-        self.image_dir = img_dir_root + ref_des + "_IMAGES"
-        if not os.path.exists(self.image_dir):
-            os.makedirs(self.image_dir)
-
     def process_existing_files(self):
-        files_on_disk = os.listdir(self.image_dir)
+
+        files_on_disk = []
+
+        # recursively walk the image file directory structure
+        for root, dirnames, filenames in os.walk(self.image_dir):
+            for filename in fnmatch.filter(filenames, '*.png'):
+                files_on_disk.append(filename)
+            for basename in fnmatch.filter(filenames, '*.part'):
+                part_file = os.path.join(root, basename)
+                log.msg("cleaning up partially downloaded file: ", part_file)
+                os.remove(part_file)
+
+        # we want to store only the latest image file names in the queue
         files_on_disk.sort()
 
         for f in files_on_disk:
-
-            # cleanup any unfinished downloads
-            if f.endswith('.part'):
-                log.msg("cleaning up partially downloaded file: ", f)
-                os.remove(os.path.join(self.image_dir, f))
-            elif f.endswith('.png'):
-                self.retrieved_file_queue.append(f)
+            self.retrieved_file_queue.append(f)
 
         log.msg('Number of existing images CAMDS agent starting out with: ', len(self.retrieved_file_queue))
         reactor.callLater(0, self.list_files)
@@ -165,7 +167,23 @@ class RetrieveFileFactory(SMBProtocolFactory):
 
             log.msg('New Image listed, about to download: ', file_name)
 
-            file_obj = open(os.path.join(self.image_dir, file_name) + '.part', 'w')
+            match = IMG_PATTERN.match(file_name)
+
+            if not match:
+                log.err('Skipping image saved in unexpected file format: ', file_name)
+                reactor.callLater(0, self.list_files)
+
+            year = match.group(1)
+            month = match.group(2)
+            day = match.group(3)
+
+            image_path = os.path.join(self.image_dir, year, month, day)
+
+            if not os.path.exists(image_path):
+                os.makedirs(image_path)
+
+            dest_file_name = self.ref_des + '_' + file_name
+            file_obj = open(os.path.join(image_path, dest_file_name) + '.part', 'w')
 
             file_path = '/' + file_name
 
