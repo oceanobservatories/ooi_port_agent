@@ -71,6 +71,7 @@ class AgentTypes(Enumeration):
     BOTPT = 'botpt'
     CAMDS = 'camds'
     CAMHD = 'camhd'
+    ZPLSC = 'zplsc'
     ANTELOPE = 'antelope'
 
 
