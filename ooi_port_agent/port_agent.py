@@ -7,6 +7,7 @@ Usage:
     port_agent.py botpt <instaddr> <rxport> <txport> <refdes> [--ttl=<ttl>]
     port_agent.py camds <instaddr> <instport> <imgdir> <refdes> [--ttl=<ttl>]
     port_agent.py camhd <instaddr> <subport> <reqport> <refdes> [--ttl=<ttl>]
+    port_agent.py zplsc <instaddr> <instport> <imgdir> <refdes> [--ttl=<ttl>]
     port_agent.py antelope <instaddr> <instport> <refdes> [--ttl=<ttl>]
 
 Options:
@@ -26,6 +27,7 @@ from common import AgentTypes
 from agents import TcpPortAgent
 from agents import RsnPortAgent
 from agents import BotptPortAgent
+from zplsc_agent import ZplscPortAgent
 from camds_agent import CamdsPortAgent
 
 
@@ -96,7 +98,8 @@ def main():
         AgentTypes.BOTPT: BotptPortAgent,
         AgentTypes.CAMDS: CamdsPortAgent,
         AgentTypes.CAMHD: CamhdPortAgent,
-        AgentTypes.ANTELOPE: AntelopePortAgent
+        AgentTypes.ANTELOPE: AntelopePortAgent,
+        AgentTypes.ZPLSC: ZplscPortAgent
     }
 
     agent_type = config['type']
