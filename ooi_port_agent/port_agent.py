@@ -7,7 +7,7 @@ Usage:
     port_agent.py botpt <instaddr> <rxport> <txport> <refdes> [--ttl=<ttl>]
     port_agent.py camds <instaddr> <instport> <imgdir> <refdes> [--ttl=<ttl>]
     port_agent.py camhd <instaddr> <subport> <reqport> <refdes> [--ttl=<ttl>]
-    port_agent.py zplsc <instaddr> <instport> <rawdir> <user> <paswd> <refdes> [--ttl=<ttl>]
+    port_agent.py zplsc <instaddr> <instport> <ftpdir> <rawdir> <user> <paswd> <refdes> [--ttl=<ttl>]
     port_agent.py antelope <instaddr> <instport> <refdes> [--ttl=<ttl>]
 
 Options:

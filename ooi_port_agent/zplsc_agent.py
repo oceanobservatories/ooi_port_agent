@@ -51,9 +51,6 @@ from common import MAX_RECONNECT_DELAY
 
 
 PORT = 21
-SERVER_DIR = 'data/Shelf_OPS'   # default raw file location in FTP server
-LOCAL_DIR = '.'                 # default location to store raw data files locally
-EXT = '.raw'                    # default file extension
 RETRY = 3                       # Seconds
 SEARCH_SIZE = 10000
 
@@ -83,12 +80,12 @@ class FileWriter(Protocol):
 
 class FTPClientProtocol(FTPClient):
 
-    def __init__(self, local_dir, refdes, *args, **kwargs):
+    def __init__(self, server_dir, local_dir, refdes, *args, **kwargs):
         FTPClient.__init__(self, *args, **kwargs)
 
         self._refdes = refdes
+        self._server_directory = server_dir
         self._local_directory = local_dir
-        self._server_directory = SERVER_DIR
 
     def connectionMade(self):
 
@@ -246,7 +243,8 @@ class ZplscFtpClientFactory(ReconnectingClientFactory):
     maxDelay = MAX_RECONNECT_DELAY
     retrieved_file_queue = None     # maintains a list of downloaded files
 
-    def __init__(self, local_raw_file_dir, refdes, user_name, password):
+    def __init__(self, server_raw_file_dir, local_raw_file_dir, refdes, user_name, password):
+        self.server_raw_file_dir = server_raw_file_dir
         self.local_raw_file_dir = local_raw_file_dir
         self.refdes = refdes
         self.user_name = user_name
@@ -254,7 +252,8 @@ class ZplscFtpClientFactory(ReconnectingClientFactory):
 
     def buildProtocol(self, addr):
         log.msg('Made FTP connection to instrument (%s), building protocol' % addr)
-        p = self.protocol(self.local_raw_file_dir, self.refdes, self.user_name, self.password)
+        p = self.protocol(self.server_raw_file_dir, self.local_raw_file_dir,
+                          self.refdes, self.user_name, self.password)
         p.factory = self
         self.resetDelay()
         return p
@@ -265,6 +264,7 @@ class ZplscPortAgent(TcpPortAgent):
     def __init__(self, config):
         super(ZplscPortAgent, self).__init__(config)
         self.local_dir = config['rawdir']
+        self.server_dir = config['ftpdir']
         self.username = config['user']
         self.password = config['paswd']
         self._start_inst_ftp_connection()
@@ -274,5 +274,5 @@ class ZplscPortAgent(TcpPortAgent):
 
         local_raw_file_dir = os.path.join(self.local_dir, self.refdes)
         download_factory = ZplscFtpClientFactory(
-            local_raw_file_dir, self.refdes, self.username, self.password)
+            self.server_dir, local_raw_file_dir, self.refdes, self.username, self.password)
         reactor.connectTCP(self.inst_addr, PORT, download_factory)
