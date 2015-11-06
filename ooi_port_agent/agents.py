@@ -96,7 +96,8 @@ class PortAgent(object):
 
     @staticmethod
     def done(response, caller=''):
-        log.msg(caller + 'http response: %s' % response.code)
+        if response.code != 200:
+            log.msg(caller + 'http response: %s' % response.code)
 
     def data_port_cb(self, port):
         self.data_port = port.getHost().port
@@ -150,18 +151,17 @@ class PortAgent(object):
 
     def _start_servers(self):
         self.data_endpoint = TCP4ServerEndpoint(reactor, self.data_port)
-        data_deferred = self.data_endpoint.listen(DataFactory(self, PacketType.FROM_DRIVER, EndpointType.CLIENT))
-        data_deferred.addCallback(self.data_port_cb)
+        self.data_endpoint.listen(
+            DataFactory(self, PacketType.FROM_DRIVER, EndpointType.CLIENT)).addCallback(self.data_port_cb)
 
         self.command_endpoint = TCP4ServerEndpoint(reactor, self.command_port)
-        command_deferred = self.command_endpoint.listen(
-            CommandFactory(self, PacketType.PA_COMMAND, EndpointType.COMMAND))
-        command_deferred.addCallback(self.command_port_cb)
+        self.command_endpoint.listen(
+            CommandFactory(self, PacketType.PA_COMMAND,EndpointType.COMMAND)).addCallback(self.command_port_cb)
 
         self.sniff_port = int(self.sniff_port)
         self.sniff_endpoint = TCP4ServerEndpoint(reactor, self.sniff_port)
-        sniff_deferred = self.sniff_endpoint.listen(DataFactory(self, PacketType.UNKNOWN, EndpointType.LOGGER))
-        sniff_deferred.addCallback(self.sniff_port_cb)
+        self.sniff_endpoint.listen(
+            DataFactory(self, PacketType.UNKNOWN, EndpointType.LOGGER)).addCallback(self.sniff_port_cb)
 
     def _heartbeat(self):
         packets = Packet.create('HB', PacketType.PA_HEARTBEAT)
@@ -169,15 +169,11 @@ class PortAgent(object):
 
         # Set TTL Check Status
         check_string = self._agent + 'check/pass/service:'
-        d = get(check_string + self.data_port_id)
-        d.addCallback(self.done, caller='%s TTL check status: ' % self.data_port_id)
-        d.addErrback(log.msg, 'Error sending check for data port')
-        d = get(check_string + self.command_port_id)
-        d.addCallback(self.done, caller='%s TTL check status: ' % self.command_port_id)
-        d.addErrback(log.msg, 'Error sending check for command port')
-        d = get(check_string + self.sniffer_port_id)
-        d.addCallback(self.done, caller='%s TTL check status: ' % self.sniffer_port_id)
-        d.addErrback(log.msg, 'Error sending check for sniff port')
+
+        for port_id in [self.data_port_id, self.command_port_id, self.sniffer_port_id]:
+            d = get(check_string + port_id)
+            d.addCallback(self.done, caller='TTL check status: %s' % port_id)
+            d.addErrback(log.msg, 'Error sending check: %s' % port_id)
 
         reactor.callLater(HEARTBEAT_INTERVAL, self._heartbeat)
 
