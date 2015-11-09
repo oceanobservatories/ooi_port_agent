@@ -1,11 +1,20 @@
 from twisted.internet import reactor
 from twisted.internet.defer import succeed
-from twisted.web.client import Agent
+from twisted.web.client import Agent, HTTPConnectionPool
 from twisted.web.http_headers import Headers
 from twisted.web.iweb import IBodyProducer
 from zope.interface import implements
 
 __author__ = 'petercable'
+
+
+class ConsulConnectionPool(HTTPConnectionPool):
+    maxPersistentPerHost = 6
+    cachedConnectionTimeout = 600
+
+
+pool = ConsulConnectionPool(reactor)
+agent = Agent(reactor, pool=pool)
 
 
 class StringProducer(object):
@@ -27,11 +36,9 @@ class StringProducer(object):
 
 
 def get(url):
-    agent = Agent(reactor)
     return agent.request('GET', url)
 
 
 def put(url, data):
-    agent = Agent(reactor)
     producer = StringProducer(data)
     return agent.request('PUT', url, Headers(), producer)
