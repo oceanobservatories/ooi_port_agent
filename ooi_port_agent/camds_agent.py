@@ -211,7 +211,7 @@ class RetrieveFileFactory(SMBProtocolFactory):
 
                 # Send a message to the driver indicating that a new image has been listed
                 # The driver will then associate metadata with the image file name
-                packets = Packet.create('New Image:' + str(file_name), PacketType.FROM_INSTRUMENT)
+                packets = Packet.create('New Image:' + self.ref_des + '_' + str(file_name), PacketType.FROM_INSTRUMENT)
                 self.router.got_data(packets)
 
         reactor.callLater(0, self.fetch_file)
