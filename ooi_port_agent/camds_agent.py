@@ -209,11 +209,6 @@ class RetrieveFileFactory(SMBProtocolFactory):
                 # Queue up pending files for download
                 self.pending_file_queue.append(file_name)
 
-                # Send a message to the driver indicating that a new image has been listed
-                # The driver will then associate metadata with the image file name
-                packets = Packet.create('New Image:' + self.ref_des + '_' + str(file_name), PacketType.FROM_INSTRUMENT)
-                self.router.got_data(packets)
-
         reactor.callLater(0, self.fetch_file)
 
     #Callback function when file download is complete
@@ -231,6 +226,11 @@ class RetrieveFileFactory(SMBProtocolFactory):
         log.msg('File downloaded: ', new_filename)
 
         orig_filename = new_filename.split('_')[1]
+
+        # Send a message to the driver indicating that a new image has been retrieved
+        # The driver will then associate metadata with the image file name
+        packets = Packet.create('New Image:' + new_filename, PacketType.FROM_INSTRUMENT)
+        self.router.got_data(packets)
 
         self.retrieved_file_queue.append(orig_filename)
 
