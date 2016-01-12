@@ -227,14 +227,14 @@ class RetrieveFileFactory(SMBProtocolFactory):
 
         orig_filename = new_filename.split('_')[1]
 
+        self.retrieved_file_queue.append(orig_filename)
+
+        file_obj.close()
+
         # Send a message to the driver indicating that a new image has been retrieved
         # The driver will then associate metadata with the image file name
         packets = Packet.create('New Image:' + new_filename, PacketType.FROM_INSTRUMENT)
         self.router.got_data(packets)
-
-        self.retrieved_file_queue.append(orig_filename)
-
-        file_obj.close()
 
         reactor.callLater(0, self.fetch_file)
 
