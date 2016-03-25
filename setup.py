@@ -66,7 +66,7 @@ setup(
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
-    packages=['ooi_port_agent'],
+    packages=find_packages(),
 
     # List run-time dependencies here.  These will be installed by pip when
     # your project is installed. For an analysis of "install_requires" vs pip's
@@ -96,7 +96,8 @@ setup(
     entry_points={
         'console_scripts': [
             'port_agent=ooi_port_agent.port_agent:main',
-            'port_agent_decoder=ooi_port_agent.decoder:main',
+            'port_agent_decoder=ooi_port_agent.tools.decoder:main',
+            'paconnect=ooi_port_agent.tools.pa_connect:connect',
         ],
     },
 

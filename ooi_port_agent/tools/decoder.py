@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from agents import Packet
+from ooi_port_agent.agents import Packet
 import sys
 
 
