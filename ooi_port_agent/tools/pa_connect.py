@@ -29,24 +29,59 @@ def _connect(addr, port):
                 s.send(msg)
 
 
-@click.command()
-@click.option('--port', type=click.Choice(['sniff', 'command', 'data']), default='sniff')
-@click.argument('refdes', nargs=1)
-def connect(port, refdes):
-    service_map = {
-        'sniff': 'sniff-port-agent',
-        'command': 'command-port-agent',
-        'data': 'port-agent'
-    }
+def get_host_port(service_id, tag):
     consul = consulate.Consul()
-    service_id = service_map[port]
-    svc = consul.health.service(service_id, tag=refdes, passing=True)
+    svc = consul.health.service(service_id, tag=tag, passing=True)
     if len(svc) == 1:
         svc = svc[0]
         addr = svc['Node']['Address']
         port = svc['Service']['Port']
-        _connect(addr, port)
+        return addr, port
+    return None, None
+
+
+@click.group()
+def cli():
+    pass
+
+
+service_map = {
+    'sniff': 'sniff-port-agent',
+    'command': 'command-port-agent',
+    'data': 'port-agent'
+}
+
+
+@cli.command()
+def list():
+    consul = consulate.Consul()
+    services = consul.health.service('port-agent', passing=True)
+    agents = []
+    for svc in services:
+        agents.extend(svc.get('Service', {}).get('Tags', []))
+    click.echo('\n'.join(agents))
+
+
+@cli.command()
+@click.argument('refdes', nargs=1)
+def sniff(refdes):
+    addr, port = get_host_port('sniff-port-agent', refdes)
+    _connect(addr, port)
+
+
+@cli.command()
+@click.argument('refdes', nargs=1)
+def command(refdes):
+    addr, port = get_host_port('command-port-agent', refdes)
+    _connect(addr, port)
+
+
+@cli.command()
+@click.argument('refdes', nargs=1)
+def data(refdes):
+    addr, port = get_host_port('port-agent', refdes)
+    _connect(addr, port)
 
 
 if __name__ == '__main__':
-    connect()
+    cli()
