@@ -97,7 +97,7 @@ setup(
         'console_scripts': [
             'port_agent=ooi_port_agent.port_agent:main',
             'port_agent_decoder=ooi_port_agent.tools.decoder:main',
-            'paconnect=ooi_port_agent.tools.pa_connect:connect',
+            'paconnect=ooi_port_agent.tools.pa_connect:cli',
         ],
     },
 

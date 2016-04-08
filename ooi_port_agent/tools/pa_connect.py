@@ -45,13 +45,6 @@ def cli():
     pass
 
 
-service_map = {
-    'sniff': 'sniff-port-agent',
-    'command': 'command-port-agent',
-    'data': 'port-agent'
-}
-
-
 @cli.command()
 def list():
     consul = consulate.Consul()
