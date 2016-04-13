@@ -91,6 +91,7 @@ class EndpointType(Enumeration):
     DATALOGGER = 'data_logger'
     PORT_AGENT = 'port_agent'
     COMMAND_HANDLER = 'command_handler'
+    RAW = 'raw'  # DIRECT ACCESS
 
 
 class PacketType(Enumeration):

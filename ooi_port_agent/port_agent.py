@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """
 Usage:
-    port_agent.py --config <config_file>
     port_agent.py tcp <instaddr> <instport> <refdes> [--ttl=<ttl>]
     port_agent.py rsn <instaddr> <instport> <digiport> <refdes> [--ttl=<ttl>]
     port_agent.py botpt <instaddr> <rxport> <txport> <refdes> [--ttl=<ttl>]
@@ -41,10 +40,16 @@ def configure_logging():
 
 
 def config_from_options(options):
-    if options['--config']:
-        return yaml.load(open(options['--config']))
 
-    config = {}
+    config = {
+        'ports': {
+            'data': 0,
+            'command': 0,
+            'sniff': 0,
+            'da': 0
+        }
+    }
+
     for option in options:
         if option.startswith('<'):
             name = option[1:-1]
