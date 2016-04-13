@@ -2,6 +2,7 @@ from __future__ import division
 
 import httplib
 import json
+from functools import partial
 
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet import reactor
@@ -36,18 +37,8 @@ class PortAgent(object):
 
     def __init__(self, config):
         self.config = config
-        self.data_port = 0
-        self.command_port = 0
-        self.sniff_port = 0
         self.refdes = config.get('refdes', config['type'])
         self.ttl = config['ttl']
-
-        self.data_name = 'port-agent'
-        self.command_name = 'command-port-agent'
-        self.sniffer_name = 'sniff-port-agent'
-        self.data_port_id = '%s-%s' % (self.data_name, self.refdes)
-        self.command_port_id = '%s-%s' % (self.command_name, self.refdes)
-        self.sniffer_port_id = '%s-%s' % (self.sniffer_name, self.refdes)
 
         self.router = Router()
         self.connections = set()
@@ -76,6 +67,7 @@ class PortAgent(object):
 
         # from INSTRUMENT
         self.router.add_route(PacketType.FROM_INSTRUMENT, EndpointType.CLIENT, data_format=Format.PACKET)
+        self.router.add_route(PacketType.FROM_INSTRUMENT, EndpointType.RAW, data_format=Format.RAW)
         self.router.add_route(PacketType.PICKLED_FROM_INSTRUMENT, EndpointType.CLIENT, data_format=Format.PACKET)
 
         # from COMMAND SERVER
@@ -101,69 +93,54 @@ class PortAgent(object):
         if response.code != httplib.OK:
             log.msg(caller + 'http response: %s' % response.code)
 
-    def data_port_cb(self, port):
-        self.data_port = port.getHost().port
+    def get_service_name_id(self, service):
+        base_id = 'port-agent'
+        if service != 'data':
+            name = service + '-' + base_id
+        else:
+            name = base_id
+
+        service_id = name + '-' + self.refdes
+        return name, service_id
+
+    def got_port_cb(self, service, port_obj):
+        port = port_obj.getHost().port
+        self.config['ports'][service] = port
+        name, service_id = self.get_service_name_id(service)
 
         values = {
-            'ID': self.data_port_id,
-            'Name': self.data_name,
-            'Port': self.data_port,
+            'ID': service_id,
+            'Name': name,
+            'Port': port,
             'Check': {'TTL': '%ss' % self.ttl},
             'Tags': [self.refdes]
         }
         d = put(self._agent + 'service/register', json.dumps(values))
-        d.addCallback(self.done, caller='data_port_cb: ')
-        d.addErrback(log.msg, 'Error registering data port')
+        d.addCallback(self.done, caller='got_port_cb: %s' % service)
+        d.addErrback(log.msg, 'Error registering %s port' % service)
 
-        log.msg('data_port_cb: port is', self.data_port)
-
-    def command_port_cb(self, port):
-        self.command_port = port.getHost().port
-
-        values = {
-            'ID': self.command_port_id,
-            'Name': self.command_name,
-            'Port': self.command_port,
-            'Check': {'TTL': '%ss' % self.ttl},
-            'Tags': [self.refdes]
-        }
-
-        d = put(self._agent + 'service/register', json.dumps(values))
-        d.addCallback(self.done, caller='command_port_cb: ')
-        d.addErrback(log.msg, 'Error registering command port')
-
-        log.msg('command_port_cb: port is', self.command_port)
-
-    def sniff_port_cb(self, port):
-        self.sniff_port = port.getHost().port
-
-        values = {
-            'ID': self.sniffer_port_id,
-            'Name': self.sniffer_name,
-            'Port': self.sniff_port,
-            'Check': {'TTL': '%ss' % self.ttl},
-            'Tags': [self.refdes]
-        }
-
-        d = put(self._agent + 'service/register', json.dumps(values))
-        d.addCallback(self.done, caller='sniff_port_cb: ')
-        d.addErrback(log.msg, 'Error registering sniff port')
-
-        log.msg('sniff_port_cb: port is', self.sniff_port)
+        log.msg('got_port_cb: %s %s' % (service, port))
 
     def _start_servers(self):
-        self.data_endpoint = TCP4ServerEndpoint(reactor, self.data_port)
+        self.data_endpoint = TCP4ServerEndpoint(reactor, 0)
         self.data_endpoint.listen(
-            DataFactory(self, PacketType.FROM_DRIVER, EndpointType.CLIENT)).addCallback(self.data_port_cb)
+            DataFactory(self, PacketType.FROM_DRIVER, EndpointType.CLIENT)
+        ).addCallback(partial(self.got_port_cb, 'data'))
 
-        self.command_endpoint = TCP4ServerEndpoint(reactor, self.command_port)
+        self.command_endpoint = TCP4ServerEndpoint(reactor, 0)
         self.command_endpoint.listen(
-            CommandFactory(self, PacketType.PA_COMMAND,EndpointType.COMMAND)).addCallback(self.command_port_cb)
+            CommandFactory(self, PacketType.PA_COMMAND,EndpointType.COMMAND)
+        ).addCallback(partial(self.got_port_cb, 'command'))
 
-        self.sniff_port = int(self.sniff_port)
-        self.sniff_endpoint = TCP4ServerEndpoint(reactor, self.sniff_port)
+        self.sniff_endpoint = TCP4ServerEndpoint(reactor, 0)
         self.sniff_endpoint.listen(
-            DataFactory(self, PacketType.UNKNOWN, EndpointType.LOGGER)).addCallback(self.sniff_port_cb)
+            DataFactory(self, PacketType.UNKNOWN, EndpointType.LOGGER)
+        ).addCallback(partial(self.got_port_cb, 'sniff'))
+
+        self.da_endpoint = TCP4ServerEndpoint(reactor, 0)
+        self.da_endpoint.listen(
+            DataFactory(self, PacketType.FROM_DRIVER, EndpointType.RAW)
+        ).addCallback(partial(self.got_port_cb, 'da'))
 
     def _heartbeat(self):
         packets = Packet.create('HB', PacketType.PA_HEARTBEAT)
@@ -172,10 +149,11 @@ class PortAgent(object):
         # Set TTL Check Status
         check_string = self._agent + 'check/pass/service:'
 
-        for port_id in [self.data_port_id, self.command_port_id, self.sniffer_port_id]:
-            d = get(check_string + port_id)
-            d.addCallback(self.done, caller='TTL check status: %s' % port_id)
-            d.addErrback(log.msg, 'Error sending check: %s' % port_id)
+        for service in self.config['ports']:
+            name, service_id = self.get_service_name_id(service)
+            d = get(check_string + service_id)
+            d.addCallback(self.done, caller='TTL check status: %s' % service_id)
+            d.addErrback(log.msg, 'Error sending check: %s' % service_id)
 
         reactor.callLater(HEARTBEAT_INTERVAL, self._heartbeat)
 
