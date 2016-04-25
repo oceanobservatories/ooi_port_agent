@@ -104,8 +104,11 @@ class PortAgent(object):
         return name, service_id
 
     def got_port_cb(self, service, port_obj):
-        port = port_obj.getHost().port
+        ipaddr = port_obj.getHost()
+        port = ipaddr.port
+        host = ipaddr.host
         self.config['ports'][service] = port
+        self.config['host'] = host
         name, service_id = self.get_service_name_id(service)
 
         values = {

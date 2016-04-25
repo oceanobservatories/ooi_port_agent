@@ -5,7 +5,7 @@ import consulate
 import socket, select, sys
 
 
-def _connect(addr, port):
+def _connect(addr, port, eol='\n'):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(2)
     s.connect((addr, port))
@@ -26,7 +26,7 @@ def _connect(addr, port):
 
             else:
                 msg = sys.stdin.readline()
-                s.send(msg)
+                s.send(msg.rstrip() + eol)
 
 
 def get_host_port(service_id, tag):
@@ -71,10 +71,27 @@ def command(refdes):
 
 @cli.command()
 @click.argument('refdes', nargs=1)
-def data(refdes):
-    addr, port = get_host_port('port-agent', refdes)
-    _connect(addr, port)
+@click.option('--eol', default='CRLF')
+def data(refdes, eol):
+    eol_map = {
+        'CRLF': '\r\n',
+        'CR': '\r',
+        'LF': '\n'
+    }
+    eol = eol_map.get(eol, eol_map['CRLF'])
 
+    addr, port = get_host_port('port-agent', refdes)
+    _connect(addr, port, eol)
+
+
+@cli.command()
+@click.argument('refdes', nargs=1)
+def info(refdes):
+    addr, port = get_host_port('port-agent', refdes)
+    addr, cmd_port = get_host_port('command-port-agent', refdes)
+    addr, da_port = get_host_port('da-port-agent', refdes)
+    addr, sniff_port = get_host_port('sniff-port-agent', refdes)
+    print {'refdes': refdes, 'host': addr, 'data': port, 'command': cmd_port, 'sniff': sniff_port, 'da': da_port}
 
 if __name__ == '__main__':
     cli()
