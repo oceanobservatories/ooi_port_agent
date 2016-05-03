@@ -1,14 +1,20 @@
 #!/usr/bin/env python
+import ast
 
 import click
 import consulate
 import socket, select, sys
+
+from ooi_port_agent.packet import Packet
+
+TRIPS = '"""'
 
 
 def _connect(addr, port, eol='\n'):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(2)
     s.connect((addr, port))
+    buffer = ''
 
     while True:
         socket_list = [sys.stdin, s]
@@ -22,11 +28,23 @@ def _connect(addr, port, eol='\n'):
                     print 'Connection closed'
                     sys.exit()
                 else:
-                    sys.stdout.write(data)
+                    buffer += data
+                    while True:
+                        packet, buffer = Packet.packet_from_buffer(buffer)
+                        if packet:
+                            print packet.logstring
+                        else:
+                            break
 
             else:
-                msg = sys.stdin.readline()
-                s.send(msg.rstrip() + eol)
+                try:
+                    msg = sys.stdin.readline().rstrip()
+                    msg = ast.literal_eval(TRIPS + msg + TRIPS)
+                    if eol:
+                        msg += eol
+                    s.send(msg)
+                except SyntaxError:
+                    print >> sys.stderr, 'Syntax Error!'
 
 
 def get_host_port(service_id, tag):
@@ -78,7 +96,7 @@ def data(refdes, eol):
         'CR': '\r',
         'LF': '\n'
     }
-    eol = eol_map.get(eol, eol_map['CRLF'])
+    eol = eol_map.get(eol, None)
 
     addr, port = get_host_port('port-agent', refdes)
     _connect(addr, port, eol)

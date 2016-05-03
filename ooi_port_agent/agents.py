@@ -4,10 +4,13 @@ import httplib
 import json
 from functools import partial
 
+from twisted.internet.defer import inlineCallbacks
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet import reactor
+from twisted.internet.error import ConnectionRefusedError
 from twisted.python import log
 from twisted.python.logfile import DailyLogFile
+from twisted.web.client import readBody
 
 import ooi_port_agent
 from common import EndpointType
@@ -23,6 +26,9 @@ from factories import DigiCommandClientFactory
 from ooi_port_agent.web import get, put
 from packet import Packet
 from router import Router
+
+
+CONSUL_RETRY_INTERVAL = 10
 
 
 #################################################################################
@@ -47,6 +53,7 @@ class PortAgent(object):
         self._register_loggers()
         self._create_routes()
         self._start_servers()
+        self.get_consul_host()
         self._heartbeat()
         self.num_connections = 0
         log.msg('Base PortAgent initialization complete')
@@ -106,9 +113,7 @@ class PortAgent(object):
     def got_port_cb(self, service, port_obj):
         ipaddr = port_obj.getHost()
         port = ipaddr.port
-        host = ipaddr.host
         self.config['ports'][service] = port
-        self.config['host'] = host
         name, service_id = self.get_service_name_id(service)
 
         values = {
@@ -159,6 +164,19 @@ class PortAgent(object):
             d.addErrback(log.msg, 'Error sending check: %s' % service_id)
 
         reactor.callLater(HEARTBEAT_INTERVAL, self._heartbeat)
+
+    @inlineCallbacks
+    def get_consul_host(self):
+        url = self._agent + 'self'
+        try:
+            response = yield get(url)
+            body = yield readBody(response)
+            data = json.loads(body)
+            host = data['Member']['Addr']
+            self.config['host'] = host
+        except (ConnectionRefusedError, KeyError) as e:
+            log.msg('Unable to retrieve host address from consul: ', e)
+            reactor.callLater(CONSUL_RETRY_INTERVAL, self.get_consul_host)
 
     def client_connected(self, connection):
         log.msg('CLIENT CONNECTED FROM ', connection)
