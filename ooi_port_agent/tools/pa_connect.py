@@ -10,11 +10,13 @@ from ooi_port_agent.packet import Packet
 TRIPS = '"""'
 
 
-def _connect(addr, port, eol='\n'):
+def _connect(addr, port, eol='\n', expect_packets=False):
+    print 'Connecting to %s %d' % (addr, port)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(2)
     s.connect((addr, port))
     buffer = ''
+    print 'Connected!'
 
     while True:
         socket_list = [sys.stdin, s]
@@ -28,13 +30,16 @@ def _connect(addr, port, eol='\n'):
                     print 'Connection closed'
                     sys.exit()
                 else:
-                    buffer += data
-                    while True:
-                        packet, buffer = Packet.packet_from_buffer(buffer)
-                        if packet:
-                            print packet.logstring
-                        else:
-                            break
+                    if expect_packets:
+                        buffer += data
+                        while True:
+                            packet, buffer = Packet.packet_from_buffer(buffer)
+                            if packet:
+                                print packet.logstring
+                            else:
+                                break
+                    else:
+                        print data.rstrip('\n')
 
             else:
                 try:
@@ -99,7 +104,7 @@ def data(refdes, eol):
     eol = eol_map.get(eol, None)
 
     addr, port = get_host_port('port-agent', refdes)
-    _connect(addr, port, eol)
+    _connect(addr, port, eol, expect_packets=True)
 
 
 @cli.command()
