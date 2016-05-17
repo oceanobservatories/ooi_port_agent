@@ -6,7 +6,7 @@ from functools import partial
 
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet.endpoints import TCP4ServerEndpoint
-from twisted.internet import reactor
+from twisted.internet import reactor, task
 from twisted.internet.error import ConnectionRefusedError
 from twisted.python import log
 from twisted.python.logfile import DailyLogFile
@@ -23,6 +23,7 @@ from factories import CommandFactory
 from factories import InstrumentClientFactory
 from factories import DigiInstrumentClientFactory
 from factories import DigiCommandClientFactory
+from ooi_port_agent.statistics import StatisticsPublisher
 from ooi_port_agent.web import get, put
 from packet import Packet
 from router import Router
@@ -45,8 +46,11 @@ class PortAgent(object):
         self.config = config
         self.refdes = config.get('refdes', config['type'])
         self.ttl = config['ttl']
+        self.num_connections = 0
 
-        self.router = Router()
+        self.router = Router(self)
+        self.stats_publisher = StatisticsPublisher()
+        self.stats_publisher.connect()
         self.connections = set()
         self.clients = set()
 
@@ -54,8 +58,10 @@ class PortAgent(object):
         self._create_routes()
         self._start_servers()
         self.get_consul_host()
-        self._heartbeat()
-        self.num_connections = 0
+
+        heartbeat_task = task.LoopingCall(self._heartbeat)
+        heartbeat_task.start(interval=HEARTBEAT_INTERVAL)
+
         log.msg('Base PortAgent initialization complete')
 
     def _register_loggers(self):
@@ -95,11 +101,6 @@ class PortAgent(object):
         self.router.add_route(PacketType.DIGI_RSP, EndpointType.CLIENT, data_format=Format.PACKET)
         self.router.add_route(PacketType.DIGI_RSP, EndpointType.COMMAND, data_format=Format.RAW)
 
-    @staticmethod
-    def done(response, caller=''):
-        if response.code != httplib.OK:
-            log.msg(caller + 'http response: %s' % response.code)
-
     def get_service_name_id(self, service):
         base_id = 'port-agent'
         if service != 'data':
@@ -110,6 +111,7 @@ class PortAgent(object):
         service_id = name + '-' + self.refdes
         return name, service_id
 
+    @inlineCallbacks
     def got_port_cb(self, service, port_obj):
         ipaddr = port_obj.getHost()
         port = ipaddr.port
@@ -123,11 +125,10 @@ class PortAgent(object):
             'Check': {'TTL': '%ss' % self.ttl},
             'Tags': [self.refdes]
         }
-        d = put(self._agent + 'service/register', json.dumps(values))
-        d.addCallback(self.done, caller='got_port_cb: %s' % service)
-        d.addErrback(log.msg, 'Error registering %s port' % service)
 
-        log.msg('got_port_cb: %s %s' % (service, port))
+        response = yield put(self._agent + 'service/register', json.dumps(values))
+        if response.code != httplib.OK:
+            log.msg(service + 'http response: %s' % response.code)
 
     def _start_servers(self):
         self.data_endpoint = TCP4ServerEndpoint(reactor, 0)
@@ -150,6 +151,7 @@ class PortAgent(object):
             DataFactory(self, PacketType.FROM_DRIVER, EndpointType.RAW)
         ).addCallback(partial(self.got_port_cb, 'da'))
 
+    @inlineCallbacks
     def _heartbeat(self):
         packets = Packet.create('HB', PacketType.PA_HEARTBEAT)
         self.router.got_data(packets)
@@ -159,11 +161,7 @@ class PortAgent(object):
 
         for service in self.config['ports']:
             name, service_id = self.get_service_name_id(service)
-            d = get(check_string + service_id)
-            d.addCallback(self.done, caller='TTL check status: %s' % service_id)
-            d.addErrback(log.msg, 'Error sending check: %s' % service_id)
-
-        reactor.callLater(HEARTBEAT_INTERVAL, self._heartbeat)
+            yield get(check_string + service_id)
 
     @inlineCallbacks
     def get_consul_host(self):

@@ -17,7 +17,7 @@ def main():
                 packet = Packet.packet_from_fh(fh)
                 if packet is None:
                     break
-                print packet
+                sys.stdout.write(packet.payload)
 
 if __name__ == '__main__':
     main()

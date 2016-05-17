@@ -1,3 +1,4 @@
+from pika.adapters import TwistedProtocolConnection
 from twisted.internet.protocol import ReconnectingClientFactory
 from twisted.internet.protocol import Factory
 from twisted.python import log
