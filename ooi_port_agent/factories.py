@@ -1,12 +1,12 @@
-from twisted.internet.protocol import ReconnectingClientFactory
 from twisted.internet.protocol import Factory
+from twisted.internet.protocol import ReconnectingClientFactory
 from twisted.python import log
 
 from common import MAX_RECONNECT_DELAY
-from protocols import InstrumentProtocol
 from protocols import CommandProtocol
-from protocols import DigiInstrumentProtocol
 from protocols import DigiCommandProtocol
+from protocols import DigiInstrumentProtocol
+from protocols import InstrumentProtocol
 from protocols import PortAgentClientProtocol
 
 
