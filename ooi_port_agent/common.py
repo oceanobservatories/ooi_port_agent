@@ -5,7 +5,7 @@
 MAX_RECONNECT_DELAY = 240
 
 # Interval at which router statistics are logged
-ROUTER_STATS_INTERVAL = 10
+ROUTER_STATS_INTERVAL = 60
 
 # Command to set the DIGI timestamps to binary mode, sent automatically upon every DIGI connection
 BINARY_TIMESTAMP = 'time 2\n'
