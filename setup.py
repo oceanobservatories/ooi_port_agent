@@ -66,13 +66,13 @@ setup(
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
-    packages=find_packages(),
+    packages=['ooi_port_agent'],
 
     # List run-time dependencies here.  These will be installed by pip when
     # your project is installed. For an analysis of "install_requires" vs pip's
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=['twisted', 'docopt', 'pyyaml', 'cython', 'pysmb'],
+    install_requires=['twisted', 'docopt', 'pyyaml', 'cython', 'pysmb', 'pika'],
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,
@@ -81,13 +81,6 @@ setup(
     extras_require={
         'camhd': ['txzmq'],
         'antelope': ['msgpack-python'],
-    },
-
-    # If there are data files included in your packages that need to be
-    # installed, specify them here.  If using Python 2.6 or less, then these
-    # have to be included in MANIFEST.in as well.
-    package_data={
-        'sample': ['package_data.dat'],
     },
 
     # To provide executable scripts, use entry points in preference to the
@@ -102,4 +95,5 @@ setup(
     },
 
     ext_modules=cythonize('ooi_port_agent/lrc.pyx'),
+    zip_safe=False,
 )
