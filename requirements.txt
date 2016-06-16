@@ -1,0 +1,7 @@
+twisted
+docopt
+pyyaml
+pysmb
+pika
+click
+cython
