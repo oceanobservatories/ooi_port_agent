@@ -1,0 +1,5 @@
+twisted
+docopt
+pyyaml
+pysmb
+pika
