@@ -12,6 +12,7 @@ from common import PacketType, NEWLINE
 from packet import Packet
 import cPickle as pickle
 
+
 def get_one(orb):
     try:
         pktid, srcname, pkttime, data = orb.reap(1)
@@ -121,10 +122,7 @@ class AntelopePortAgent(PortAgent):
         self.router.got_data(get_one(self.orb))
 
     def get_state(self, *args):
-        if self.orb_thread is not None:
-            msg = 'CONNECTED'
-        else:
-            msg = 'DISCONNECTED'
+        msg = 'CONNECTED'
         return Packet.create(msg + NEWLINE, PacketType.PA_STATUS)
 
     def stopProducing(self):
