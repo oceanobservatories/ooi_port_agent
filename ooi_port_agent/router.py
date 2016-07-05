@@ -166,3 +166,21 @@ class Router(object):
                 out_byte_rate / 1000,
             ), logLevel=logging.DEBUG)
         self.statistics.clear()
+
+    def registerProducer(self, producer):
+        self.producers.add(producer)
+
+    def deregisterProducer(self, producer):
+        self.producers.remove(producer)
+
+    def stopProducing(self):
+        for producer in self.producers:
+            producer.stopProducing()
+
+    def pauseProducing(self):
+        for producer in self.producers:
+            producer.pauseProducing()
+
+    def resumeProducing(self):
+        for producer in self.producers:
+            producer.resumeProducing()

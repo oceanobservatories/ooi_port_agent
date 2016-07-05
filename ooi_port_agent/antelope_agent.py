@@ -123,7 +123,7 @@ class AntelopePortAgent(PortAgent):
 
     def get_state(self, *args):
         msg = 'CONNECTED'
-        return Packet.create(msg + NEWLINE, PacketType.PA_STATUS)
+        return Packet.create(msg, PacketType.PA_STATUS)
 
     def stopProducing(self):
         self._orb_stop()
