@@ -4,16 +4,17 @@ import httplib
 import json
 from functools import partial
 
-from twisted.internet.defer import inlineCallbacks
-from twisted.internet.endpoints import TCP4ServerEndpoint
+from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.endpoints import TCP4ServerEndpoint, TCP4ClientEndpoint, connectProtocol
 from twisted.internet import reactor, task
 from twisted.internet.error import ConnectionRefusedError
+from twisted.internet.protocol import Protocol, ClientCreator
 from twisted.python import log
 from twisted.python.logfile import DailyLogFile
 from twisted.web.client import readBody
 
 import ooi_port_agent
-from common import EndpointType
+from common import EndpointType, BINARY_TIMESTAMP
 from common import PacketType
 from common import Format
 from common import HEARTBEAT_INTERVAL
@@ -23,6 +24,7 @@ from factories import CommandFactory
 from factories import InstrumentClientFactory
 from factories import DigiInstrumentClientFactory
 from factories import DigiCommandClientFactory
+from ooi_port_agent.protocols import DigiCommandProtocol
 from ooi_port_agent.statistics import StatisticsPublisher
 from ooi_port_agent.web import get, put
 from packet import Packet
@@ -187,7 +189,7 @@ class PortAgent(object):
     def instrument_connected(self, connection):
         log.msg('CONNECTED TO ', connection)
         self.connections.add(connection)
-        if len(self.connections) == self.num_connections:
+        if len(self.connections) >= self.num_connections:
             self.router.got_data(Packet.create('CONNECTED', PacketType.PA_STATUS))
 
     def instrument_disconnected(self, connection):
@@ -203,7 +205,7 @@ class PortAgent(object):
 
     def get_state(self, *args):
         log.msg('get_state: %r %d' % (self.connections, self.num_connections))
-        if len(self.connections) == self.num_connections:
+        if len(self.connections) >= self.num_connections:
             return Packet.create('CONNECTED', PacketType.PA_STATUS)
         return Packet.create('DISCONNECTED', PacketType.PA_STATUS)
 
@@ -240,26 +242,37 @@ class RsnPortAgent(TcpPortAgent):
     def __init__(self, config):
         super(RsnPortAgent, self).__init__(config)
         self.inst_cmd_port = config['digiport']
-        self._start_inst_command_connection()
-        self.num_connections = 2
+        self._set_binary()
+        self.num_connections = 1
         log.msg('RsnPortAgent initialization complete')
 
     def _start_inst_connection(self):
         factory = DigiInstrumentClientFactory(self, PacketType.FROM_INSTRUMENT, EndpointType.INSTRUMENT)
         reactor.connectTCP(self.inst_addr, self.inst_port, factory)
 
+    @inlineCallbacks
     def _start_inst_command_connection(self):
-        factory = DigiCommandClientFactory(self, PacketType.DIGI_RSP, EndpointType.DIGI)
-        reactor.connectTCP(self.inst_addr, self.inst_cmd_port, factory)
+        command_protocol = partial(DigiCommandProtocol, self, PacketType.DIGI_RSP, EndpointType.DIGI)
+        protocol = yield ClientCreator(reactor, command_protocol).connectTCP(self.inst_addr, self.inst_cmd_port)
+        returnValue(protocol)
 
     def register_commands(self, command_protocol):
         super(RsnPortAgent, self).register_commands(command_protocol)
         for command in self.digi_commands:
             command_protocol.register_command(command, self._handle_digi_command)
 
+    @inlineCallbacks
     def _handle_digi_command(self, command, *args):
         command = [command] + list(args)
-        return Packet.create(' '.join(command) + NEWLINE, PacketType.DIGI_CMD)
+        command = ' '.join(command) + NEWLINE
+        protocol = yield self._start_inst_command_connection()
+        protocol.write(command)
+        returnValue(Packet.create(command, PacketType.DIGI_CMD))
+
+    @inlineCallbacks
+    def _set_binary(self):
+        packets = yield self._handle_digi_command(BINARY_TIMESTAMP)
+        self.router.got_data(packets)
 
 
 class BotptPortAgent(PortAgent):

@@ -20,7 +20,6 @@ import os
 from docopt import docopt
 from twisted.internet import reactor
 from twisted.python import log
-import yaml
 
 from common import AgentTypes
 from agents import TcpPortAgent

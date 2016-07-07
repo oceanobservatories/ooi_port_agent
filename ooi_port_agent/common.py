@@ -8,7 +8,7 @@ MAX_RECONNECT_DELAY = 240
 ROUTER_STATS_INTERVAL = 60
 
 # Command to set the DIGI timestamps to binary mode, sent automatically upon every DIGI connection
-BINARY_TIMESTAMP = 'time 2\n'
+BINARY_TIMESTAMP = 'time 2'
 
 # Interval between heartbeat packets
 HEARTBEAT_INTERVAL = 10
