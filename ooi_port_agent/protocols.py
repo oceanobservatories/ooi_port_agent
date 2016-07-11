@@ -4,12 +4,14 @@
 from collections import deque
 import platform
 import socket
+
+from twisted.internet import reactor
+from twisted.internet.defer import inlineCallbacks
 from twisted.internet.protocol import Protocol
 from twisted.internet.protocol import connectionDone
 from twisted.protocols.basic import LineOnlyReceiver
 from twisted.python import log
 from common import PacketType
-from common import BINARY_TIMESTAMP
 from packet import Packet
 
 KEEPALIVE_IDLE = 100
@@ -101,7 +103,7 @@ class InstrumentProtocol(PortAgentProtocol):
 
 class DigiInstrumentProtocol(InstrumentProtocol):
     """
-    Overrides InstrumentProtocol to automatically send the binary timestamp command on connection
+    Overrides InstrumentProtocol to handle incoming data as DIGI packets
     """
     def __init__(self, port_agent, packet_type, endpoint_type):
         InstrumentProtocol.__init__(self, port_agent, packet_type, endpoint_type)
@@ -122,14 +124,23 @@ class DigiInstrumentProtocol(InstrumentProtocol):
 
 class DigiCommandProtocol(InstrumentProtocol):
     """
-    Overrides InstrumentProtocol to automatically send the binary timestamp command on connection
+    Overrides InstrumentProtocol to automatically disconnect after 2 seconds
     """
     def __init__(self, port_agent, packet_type, endpoint_type):
         InstrumentProtocol.__init__(self, port_agent, packet_type, endpoint_type)
 
+    def write(self, data):
+        self.transport.write(data)
+        reactor.callLater(2, self.disconnect)
+
+    def disconnect(self, *args):
+        self.transport.loseConnection()
+
+    def connectionLost(self, reason=connectionDone):
+        self.port_agent.router.deregister(self.endpoint_type, self)
+
     def connectionMade(self):
-        InstrumentProtocol.connectionMade(self)
-        self.transport.write(BINARY_TIMESTAMP)
+        self.port_agent.router.register(self.endpoint_type, self)
 
 
 class CommandProtocol(LineOnlyReceiver):
@@ -154,6 +165,7 @@ class CommandProtocol(LineOnlyReceiver):
         self.port_agent.router.got_data(packets)
         self.handle_command(line)
 
+    @inlineCallbacks
     def handle_command(self, command_line):
         log.msg('handle_command: %s' % command_line)
         parts = command_line.split()
@@ -162,7 +174,7 @@ class CommandProtocol(LineOnlyReceiver):
             args = parts[1:]
 
             if command in self.callbacks:
-                packets = self.callbacks[command](command, *args)
+                packets = yield self.callbacks[command](command, *args)
             else:
                 packets = Packet.create('Received bad command on command port: %r' % command, PacketType.PA_FAULT)
 
