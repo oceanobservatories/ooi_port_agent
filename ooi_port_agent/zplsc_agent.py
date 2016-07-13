@@ -46,9 +46,10 @@ import fnmatch
 import os
 import re
 
-from agents import TcpPortAgent
+from agents import PortAgent
 from common import MAX_RECONNECT_DELAY
-
+from packet import Packet
+from common import PacketType
 
 PORT = 21
 RETRY = 3                       # Seconds
@@ -226,6 +227,13 @@ class FTPClientProtocol(FTPClient):
 
             log.msg('File downloaded: %s (%s bytes)' % (new_filename, filesize))
 
+            # Send a message to the driver indicating that a new image has been retrieved
+            # The driver will then associate metadata with the image file name
+            packets = Packet.create('downloaded file:' + str(new_filename) + '\n', PacketType.FROM_INSTRUMENT)
+            self.factory.port_agent.router.got_data(packets)
+            log.msg('Packet sent to driver: %s' % new_filename)
+
+
     def _retrieve_files_errback(self, fail_msg, filename):
         log.msg('Error retrieving file from %s share:' % self._refdes)
         log.err(str(fail_msg))
@@ -243,7 +251,8 @@ class ZplscFtpClientFactory(ReconnectingClientFactory):
     maxDelay = MAX_RECONNECT_DELAY
     retrieved_file_queue = None     # maintains a list of downloaded files
 
-    def __init__(self, server_raw_file_dir, local_raw_file_dir, refdes, user_name, password):
+    def __init__(self, port_agent, server_raw_file_dir, local_raw_file_dir, refdes, user_name, password):
+        self.port_agent = port_agent
         self.server_raw_file_dir = server_raw_file_dir
         self.local_raw_file_dir = local_raw_file_dir
         self.refdes = refdes
@@ -259,7 +268,7 @@ class ZplscFtpClientFactory(ReconnectingClientFactory):
         return p
 
 
-class ZplscPortAgent(TcpPortAgent):
+class ZplscPortAgent(PortAgent):
 
     def __init__(self, config):
         super(ZplscPortAgent, self).__init__(config)
@@ -267,6 +276,8 @@ class ZplscPortAgent(TcpPortAgent):
         self.server_dir = config['ftpdir']
         self.username = config['user']
         self.password = config['paswd']
+        self.inst_addr = config['instaddr']
+
         self._start_inst_ftp_connection()
         log.msg('ZplscPortAgent initialization complete')
 
@@ -274,5 +285,5 @@ class ZplscPortAgent(TcpPortAgent):
 
         local_raw_file_dir = os.path.join(self.local_dir, self.refdes)
         download_factory = ZplscFtpClientFactory(
-            self.server_dir, local_raw_file_dir, self.refdes, self.username, self.password)
+            self, self.server_dir, local_raw_file_dir, self.refdes, self.username, self.password)
         reactor.connectTCP(self.inst_addr, PORT, download_factory)
