@@ -2,3 +2,7 @@
 *.log
 *.datalog
 *.pyc
+build/
+ooi_port_agent.egg-info/
+ooi_port_agent/lrc.c
+ooi_port_agent/lrc.so

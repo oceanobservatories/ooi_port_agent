@@ -21,6 +21,7 @@ class InstrumentClientFactory(ReconnectingClientFactory):
     """
     protocol = InstrumentProtocol
     maxDelay = MAX_RECONNECT_DELAY
+    factor = 1.6180339887498948  # golden ratio, see super class for details
 
     def __init__(self, port_agent, packet_type, endpoint_type):
         self.port_agent = port_agent
