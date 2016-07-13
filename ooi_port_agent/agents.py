@@ -4,6 +4,7 @@ import httplib
 import json
 from functools import partial
 
+import os
 from twisted.internet import reactor, task
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.endpoints import TCP4ServerEndpoint
@@ -23,6 +24,7 @@ from factories import CommandFactory
 from factories import DataFactory
 from factories import DigiInstrumentClientFactory
 from factories import InstrumentClientFactory
+from ooi_port_agent.ooi_logfile import ArchivingDailyLogFile
 from ooi_port_agent.protocols import DigiCommandProtocol
 from ooi_port_agent.statistics import StatisticsPublisher
 from ooi_port_agent.web import get, put
@@ -32,6 +34,9 @@ from router import Router
 
 CONSUL_RETRY_INTERVAL = 10
 INSTRUMENT_DISCONNECT_FORGIVENESS_INTERVAL = 10
+CURRENTDIR = 'CURRENT'
+ARCHIVEDIR = 'ARCHIVE'
+DISCARDDIR = 'DISCARD'
 
 
 #################################################################################
@@ -73,8 +78,14 @@ class PortAgent(object):
         Create and register the binary and ascii loggers
         :return:
         """
-        self.data_logger = DailyLogFile('%s.datalog' % self.refdes, '.')
-        self.ascii_logger = DailyLogFile('%s.log' % self.refdes, '.')
+        if not os.path.exists(CURRENTDIR):
+            os.makedirs(CURRENTDIR)
+
+        binary_name = '%s.datalog' % self.refdes
+        ascii_name = '%s.log' % self.refdes
+
+        self.data_logger = ArchivingDailyLogFile(binary_name, CURRENTDIR, os.path.join(ARCHIVEDIR, self.refdes))
+        self.ascii_logger = ArchivingDailyLogFile(ascii_name, CURRENTDIR, os.path.join(DISCARDDIR, self.refdes))
         self.router.register(EndpointType.DATALOGGER, self.data_logger)
         self.router.register(EndpointType.LOGGER, self.ascii_logger)
 
