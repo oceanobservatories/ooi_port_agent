@@ -33,7 +33,7 @@ Assumptions:
 
 # Twisted imports
 from twisted.protocols.ftp import FTPFileListProtocol
-from twisted.internet import reactor, defer, task
+from twisted.internet import reactor, defer
 from twisted.internet.protocol import connectionDone
 from twisted.internet.protocol import Protocol
 from twisted.internet.protocol import ReconnectingClientFactory
@@ -41,7 +41,6 @@ from twisted.protocols.ftp import FTPClient
 from twisted.python import log
 
 # Standard library imports
-import collections
 import fnmatch
 import os
 import re
@@ -53,6 +52,7 @@ from common import PacketType
 
 PORT = 21
 RETRY = 3                       # Seconds
+CHECK_INTERVAL = 60             # Seconds
 SEARCH_SIZE = 10000
 
 FILE_NAME_MATCHER = re.compile(r'.+-D(\d{4})(\d{2})(\d{2})-T\d{2}\d{2}\d{2}\.raw')
@@ -80,7 +80,6 @@ class FileWriter(Protocol):
 
 
 class FTPClientProtocol(FTPClient):
-
     def __init__(self, server_dir, local_dir, refdes, *args, **kwargs):
         FTPClient.__init__(self, *args, **kwargs)
 
@@ -88,159 +87,104 @@ class FTPClientProtocol(FTPClient):
         self._server_directory = server_dir
         self._local_directory = local_dir
 
+    def rawDataReceived(self, data):
+        pass
+
     def connectionMade(self):
+        self._change_directory()
 
-        if not self.factory.retrieved_file_queue:
-            # Create once, queue persists in the factory
-            self.factory.retrieved_file_queue = collections.deque('', SEARCH_SIZE)
-
-        # Only need to scan the local directory during startup
-        if len(self.factory.retrieved_file_queue) == 0:
-            d = defer.execute(self._process_local_files)
-            d.addErrback(self._process_local_files_errback)
-            d.addCallback(lambda ignore: self._change_directory())    # suppress the returned result
-        else:
-            self._change_directory()
-
-    def _process_local_files(self):
-        """
-        Scan the local storage directory to remove partially downloaded files
-        and add previously downloaded files to the done queue.
-        """
-
-        # recursively walk the file directory structure
-        for root, dirnames, filenames in os.walk(self._local_directory):
-            for filename in fnmatch.filter(filenames, '*.raw'):
-                original_filename = filename.split('_')[-1]     # remove reference designator
-                if original_filename not in self.factory.retrieved_file_queue:
-                    self.factory.retrieved_file_queue.append(original_filename)
-            for basename in fnmatch.filter(filenames, '*.part'):
-                part_file = os.path.join(root, basename)
-                log.msg("Removing partially downloaded file: ", part_file)
-                os.remove(part_file)
-
-        log.msg('Number of existing data files on local disk (%s agent): ' % self._refdes,
-                len(self.factory.retrieved_file_queue))
-
-    def _process_local_files_errback(self, fail_msg):
-        log.msg('Error processing files in directory: %s:' % self._local_directory)
-        log.err(str(fail_msg))
-        log.msg('Retry processing files...')
-        d = task.deferLater(reactor, RETRY, self._process_local_files)
-        d.addErrback(self._process_local_files_errback)
-        return d
-
+    @defer.inlineCallbacks
     def _change_directory(self):
         """
         Change to the desired directory in the FTP server
         """
         log.msg('Changing FTP server working directory to: %s' % self._server_directory)
-        d = self.cwd(self._server_directory).addCallback(lambda ignore: self._list_files())
-        d.addErrback(self._change_directory_errback)
-        return d
+        try:
+            yield self.cwd(self._server_directory)
+            # start the download task
+            self._get_files()
+        except Exception as e:
+            log.msg('Error changing directory in %s share: (%s)' % (self._refdes, e))
+            log.msg('Retry changing working directory in %d secs' % RETRY)
+            reactor.callLater(RETRY, self._change_directory)
 
-    def _change_directory_errback(self, fail_msg):
-        log.msg('Error changing directory in %s share:' % self._refdes)
-        log.err(str(fail_msg))
-        log.msg('Retry changing working directory...')
-        d = task.deferLater(reactor, RETRY, self._change_directory)
-        d.addErrback(self._change_directory_errback)
-        return d
+    @defer.inlineCallbacks
+    def _get_files(self):
+        try:
+            file_list = FTPFileListProtocol()
+            yield self.list('.', file_list)
+            yield self._retrieve_files(file_list)
+        except Exception as e:
+            log.err('Exception while listing or retrieving files (%s)' % e)
 
-    def _list_files(self):
-        """
-        Get a detailed listing of the current directory
-        """
+        reactor.callLater(CHECK_INTERVAL, self._get_files)
 
-        file_list = FTPFileListProtocol()
-        d = self.list('.', file_list)
-        d.addCallback(lambda ignore: task.coiterate(self._retrieve_files(file_list)))
-        d.addErrback(self._list_files_errback)
-        return d
+    def _should_skip(self, filename):
+        # Check against files already downloaded
+        return any([
+            filename in self.factory.port_agent.retrieved_files,
+            any([filename.endswith(ext) for ext in ['.bot', '.idx']])
+        ])
 
-    def _list_files_errback(self, fail_msg):
-
-        log.msg('Error listing files from %s share:' % self._refdes)
-        log.err(str(fail_msg))
-        log.msg('Retry file list...')
-        d = task.deferLater(reactor, RETRY, self._list_files).addErrback(self._list_files_errback)
-        return d
-
+    @defer.inlineCallbacks
     def _retrieve_files(self, file_list_protocol):
         """
         Queue up only new files for FTP download
         """
-
-        d = None
-
         for file_list_line in file_list_protocol.files:
             file_name = file_list_line['filename']
-
-            # Ignore .bot & .idx files
-            if any([file_name.endswith(ext) for ext in ['.bot', '.idx']]):
+            if self._should_skip(file_name):
                 continue
 
             # Screen for expected file names
             match = FILE_NAME_MATCHER.match(file_name)
             if not match:
-                log.err('Skipping file saved in unexpected naming format: %s' % file_name)
+                log.msg('Skipping file saved in unexpected naming format: %s' % file_name)
                 continue
 
-            # Check against files already downloaded
-            if file_name in self.factory.retrieved_file_queue:
-                continue
-
+            # calculate the target directory, creating if necessary
             file_path = os.path.join(self._local_directory, *match.groups())
             if not os.path.exists(file_path):
                 os.makedirs(file_path)
 
             log.msg('New raw data file listed, about to download: ', file_name)
 
-            path_file_name = os.path.join(file_path, self._refdes + '_' + file_name + '.part')
-            dreturn = defer.Deferred().addCallback(self._file_retrieved, file_list_line['size'])
-            d = self.retrieveFile(file_name, FileWriter(path_file_name, dreturn))
-            d.addErrback(self._retrieve_files_errback, path_file_name)
-
-            yield d     # wait for this, but go ahead & do something else
-
-        if d:
-            # With single threading, the for loop above occurs in order
-            # Add a callback to the last deferred to loop back to start immediately
-            # Note: if we thread this out use a DeferredList
-            d.addBoth(lambda ignore: self._list_files())        # suppress the returned result
-        else:
-            # No new files to download yet, try again later
-            reactor.callLater(5, self._list_files)
-            # TODO: rand-exp-backoff <= max_ftp_timeout (keep connection alive)?
+            part_file_name = os.path.join(file_path, self._refdes + '_' + file_name + '.part')
+            writer_deferred = defer.Deferred()
+            writer_deferred.addCallback(self._file_retrieved, file_list_line['size'])
+            try:
+                yield self.retrieveFile(file_name, FileWriter(part_file_name, writer_deferred))
+            except Exception as e:
+                log.err('Exception retrieving file from %s share (%s)' % (self._refdes, e))
 
     def _file_retrieved(self, fileobject, filesize):
         """
         Remove the temporary '.part' extension from size verified files
         Keep track of downloaded files in the retrieved file queue
+
+        Note that this is called whether the download was successful or not,
+        so we check the size to validate whether we received enough data
         """
+        filename = fileobject.name
+        if os.path.exists(filename):
+            if filesize != os.path.getsize(filename):
+                log.msg("Removing partially downloaded file: ", filename)
+                os.remove(filename)
+            else:
+                new_filename = fileobject.name[:-5]
+                os.rename(fileobject.name, new_filename)
+                # Store only the original file name, no path, no reference designator
+                self.factory.port_agent.retrieved_files.add(os.path.basename(new_filename).split('_')[-1])
 
-        if filesize == os.path.getsize(fileobject.name):
-            new_filename = fileobject.name[:-5]
-            os.rename(fileobject.name, new_filename)
-            # Store only the original file name, no path, no reference designator
-            self.factory.retrieved_file_queue.append(os.path.basename(new_filename).split('_')[-1])
+                log.msg('File downloaded: %s (%s bytes)' % (new_filename, filesize))
+                self._notify(new_filename)
 
-            log.msg('File downloaded: %s (%s bytes)' % (new_filename, filesize))
-
-            # Send a message to the driver indicating that a new image has been retrieved
-            # The driver will then associate metadata with the image file name
-            packets = Packet.create('downloaded file:' + str(new_filename) + '\n', PacketType.FROM_INSTRUMENT)
-            self.factory.port_agent.router.got_data(packets)
-            log.msg('Packet sent to driver: %s' % new_filename)
-
-
-    def _retrieve_files_errback(self, fail_msg, filename):
-        log.msg('Error retrieving file from %s share:' % self._refdes)
-        log.err(str(fail_msg))
-        log.msg("Removing partially downloaded file: ", filename)
-        os.remove(filename)
-        # Just log the error and let it loop back to start
-        log.msg('Retry file download in next iteration')
+    def _notify(self, filename):
+        # Send a message to the driver indicating that a new image has been retrieved
+        # The driver will then associate metadata with the image file name
+        packets = Packet.create('downloaded file:' + str(filename) + '\n', PacketType.FROM_INSTRUMENT)
+        self.factory.port_agent.router.got_data(packets)
+        log.msg('Packet sent to driver: %s' % filename)
 
 
 class ZplscFtpClientFactory(ReconnectingClientFactory):
@@ -249,7 +193,6 @@ class ZplscFtpClientFactory(ReconnectingClientFactory):
     """
     protocol = FTPClientProtocol
     maxDelay = MAX_RECONNECT_DELAY
-    retrieved_file_queue = None     # maintains a list of downloaded files
 
     def __init__(self, port_agent, server_raw_file_dir, local_raw_file_dir, refdes, user_name, password):
         self.port_agent = port_agent
@@ -277,13 +220,62 @@ class ZplscPortAgent(PortAgent):
         self.username = config['user']
         self.password = config['paswd']
         self.inst_addr = config['instaddr']
+        self.retrieved_files = set()
+        self._startup()
 
-        self._start_inst_ftp_connection()
-        log.msg('ZplscPortAgent initialization complete')
+    @defer.inlineCallbacks
+    def _startup(self):
+        try:
+            yield self._process_local_files()
+            self._start_inst_ftp_connection()
+        except Exception as e:
+            log.msg('Error STARTING (%s)' % e)
+            log.msg('Retrying in %d seconds' % RETRY)
+            reactor.callLater(RETRY, self._startup)
 
-    def _start_inst_ftp_connection(self):
+    @staticmethod
+    def sleep(secs):
+        """
+        Deferred "sleep" to yield into the reactor
+        :param secs:
+        :return:
+        """
+        d = defer.Deferred()
+        reactor.callLater(secs, d.callback, None)
+        return d
 
-        local_raw_file_dir = os.path.join(self.local_dir, self.refdes)
-        download_factory = ZplscFtpClientFactory(
-            self, self.server_dir, local_raw_file_dir, self.refdes, self.username, self.password)
+    @defer.inlineCallbacks
+    def _process_local_files(self):
+        """
+        Scan the local storage directory to remove partially downloaded files
+        and add previously downloaded files to the done set.
+        """
+        log.msg('BEGIN inventory of local files prior to connecting to instrument')
+        # recursively walk the file directory structure
+        for path, dirs, files in os.walk(self.local_dir):
+            # Check this directory for RAW files
+            # Inventory all files found
+            for filename in fnmatch.filter(files, '*.raw'):
+                original_filename = filename.split('_')[-1]     # remove reference designator
+                self.retrieved_files.add(original_filename)
+            # Check this directory for PART files
+            # Remove any part files found
+            for filename in fnmatch.filter(files, '*.part'):
+                part_file = os.path.join(path, filename)
+                log.msg("Removing partially downloaded file: %s" % part_file)
+                try:
+                    os.remove(part_file)
+                except os.error:
+                    log.msg('Unable to delete partially downloaded file: %s' % part_file)
+            # Yield control briefly to allow other events to be processed
+            yield self.sleep(.001)
+
+        log.msg('COMPLETED inventory of local files prior to connecting to instrument: %d' % len(self.retrieved_files))
+
+    # noinspection PyUnusedLocal
+    def _start_inst_ftp_connection(self, *args):
+        local_dir = os.path.join(self.local_dir, self.refdes)
+        download_factory = ZplscFtpClientFactory(self, self.server_dir, local_dir,
+                                                 self.refdes, self.username, self.password)
         reactor.connectTCP(self.inst_addr, PORT, download_factory)
+        log.msg('ZplscPortAgent initialization complete')
