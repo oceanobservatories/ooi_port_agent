@@ -8,7 +8,7 @@ import os
 from twisted.internet import reactor, task
 from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.endpoints import TCP4ServerEndpoint
-from twisted.internet.error import ConnectionRefusedError
+from twisted.internet.error import ConnectionRefusedError, AlreadyCalled
 from twisted.internet.protocol import ClientCreator
 from twisted.python import log
 from twisted.python.logfile import DailyLogFile
@@ -253,7 +253,12 @@ class PortAgent(object):
             # We are now CONNECTED
             # Cancel any pending DISCONNECTED notification
             if self.disconnect_notification_id is not None:
-                self.disconnect_notification_id.cancel()
+                try:
+                    self.disconnect_notification_id.cancel()
+                except AlreadyCalled:
+                    pass
+                finally:
+                    self.disconnect_notification_id = None
             # Notify driver we are CONNECTED
             self.router.got_data(Packet.create('CONNECTED', PacketType.PA_STATUS))
 
@@ -278,6 +283,7 @@ class PortAgent(object):
         :return:
         """
         log.msg('Notifying driver we are DISCONNECTED')
+        self.disconnect_notification_id = None
         self.router.got_data(Packet.create('DISCONNECTED', PacketType.PA_STATUS))
 
     def register_commands(self, command_protocol):
