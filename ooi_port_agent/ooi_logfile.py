@@ -28,6 +28,20 @@ class ArchivingDailyLogFile(DailyLogFile):
         # primarily so this can be unit tested easily
         return time.gmtime(*args)[:3]
 
+    def suffix(self, tupledate):
+        """Return the suffix given a (year, month, day) tuple or unixtime"""
+        if isinstance(tupledate, (float, int, long)):
+            tupledate = self.toDate(tupledate)
+        if isinstance(tupledate, (tuple, list)):
+            return '%d_%02d_%02d' % tupledate
+        raise TypeError
+
+    def get_archive(self):
+        year, month, day = self.lastDate
+        name = "%s.%s" % (self.name, self.suffix(self.lastDate))
+        directory = os.path.join(self.archive_dir, str(year), '%02d' % month)
+        return name, directory
+
     def rotate(self):
         """Rotate the file and create a new one.
 
@@ -36,15 +50,19 @@ class ArchivingDailyLogFile(DailyLogFile):
         """
         if not (os.access(self.directory, os.W_OK) and os.access(self.path, os.W_OK)):
             return
-        year, month, day = self.lastDate
-        newname = "%s.%s" % (self.name, self.suffix(self.lastDate))
-        archivepath = os.path.join(self.archive_dir, str(year), '%02d' % month)
-        if not os.path.exists(archivepath):
-            os.makedirs(archivepath)
 
-        newpath = os.path.join(archivepath, newname)
+        newname, newdirectory = self.get_archive()
+        if not os.path.exists(newdirectory):
+            os.makedirs(newdirectory)
+
+        newpath = os.path.join(newdirectory, newname)
+
+        if not os.access(newdirectory, os.W_OK):
+            return
+
         if os.path.exists(newpath):
             return
+
         self._file.close()
         os.rename(self.path, newpath)
         self._openFile()
