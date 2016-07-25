@@ -177,14 +177,7 @@ class FTPClientProtocol(FTPClient):
                 self.factory.port_agent.retrieved_files.add(os.path.basename(new_filename).split('_')[-1])
 
                 log.msg('File downloaded: %s (%s bytes)' % (new_filename, filesize))
-                self._notify(new_filename)
-
-    def _notify(self, filename):
-        # Send a message to the driver indicating that a new image has been retrieved
-        # The driver will then associate metadata with the image file name
-        packets = Packet.create('downloaded file:' + str(filename) + '\n', PacketType.FROM_INSTRUMENT)
-        self.factory.port_agent.router.got_data(packets)
-        log.msg('Packet sent to driver: %s' % filename)
+                self.factory.port_agent.notify(new_filename)
 
 
 class ZplscFtpClientFactory(ReconnectingClientFactory):
@@ -251,8 +244,8 @@ class ZplscPortAgent(PortAgent):
         and add previously downloaded files to the done set.
         """
         log.msg('BEGIN inventory of local files prior to connecting to instrument')
-        # recursively walk the file directory structure
-        for path, dirs, files in os.walk(self.local_dir):
+        # recursively walk the file directory structure of the reference designator
+        for path, dirs, files in os.walk(os.path.join(self.local_dir, self.refdes)):
             # Check this directory for RAW files
             # Inventory all files found
             for filename in fnmatch.filter(files, '*.raw'):
@@ -279,3 +272,58 @@ class ZplscPortAgent(PortAgent):
                                                  self.refdes, self.username, self.password)
         reactor.connectTCP(self.inst_addr, PORT, download_factory)
         log.msg('ZplscPortAgent initialization complete')
+
+    def client_connected(self, connection):
+        """
+        Log an incoming client connection
+        :param connection: connection object
+        :return:
+
+        Override inherited method to so we can process any files received while there
+        was no driver connected.
+        """
+        log.msg('CLIENT CONNECTED FROM ', connection)
+        self.clients.add(connection)
+
+        self._submit_unprocessed_files()
+
+    def _submit_unprocessed_files(self):
+        """
+        Check list of local files and identify any that do not have corresponding
+        echograms.  Notify driver to create echograms of these.
+        :return:
+        """
+
+        log.msg('BEGIN checking list of local files on Driver connect')
+        for raw_file_name in self.retrieved_files:
+            # Screen for expected file names
+            match = FILE_NAME_MATCHER.match(raw_file_name)
+            if not match:
+                log.msg('Skipping file saved in unexpected naming format: %s' % raw_file_name)
+                continue
+
+            # calculate the target directory, check it is there
+            file_path = os.path.join(self.local_dir, self.refdes, *match.groups())
+
+            if os.path.exists(file_path):
+                dir_files = os.listdir(file_path)
+                png_files = fnmatch.filter(dir_files, '*' + raw_file_name[:-4] + '*.png')
+
+                if not png_files:
+                    # there were no matching png files for this raw file.
+                    file_name = os.path.join(file_path, self.refdes + '_' + raw_file_name)
+                    self.notify(file_name)
+
+            else:
+                log.msg('No Directory corresponding to file %s. RefDes %s : ' % raw_file_name, self.refdes)
+
+        log.msg('END checking list of local files on Driver connect')
+
+    def notify(self, filename):
+        # Send a message to the driver indicating that a new image has been retrieved
+        # The driver will then associate metadata with the image file name
+        packets = Packet.create('downloaded file:' + str(filename) + '\n', PacketType.FROM_INSTRUMENT)
+        self.router.got_data(packets)
+        log.msg('Packet sent to driver: %s' % filename)
+
+
