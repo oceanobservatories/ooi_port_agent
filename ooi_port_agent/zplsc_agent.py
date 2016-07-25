@@ -279,3 +279,54 @@ class ZplscPortAgent(PortAgent):
                                                  self.refdes, self.username, self.password)
         reactor.connectTCP(self.inst_addr, PORT, download_factory)
         log.msg('ZplscPortAgent initialization complete')
+
+    def client_connected(self, connection):
+        """
+        Log an incoming client connection
+        :param connection: connection object
+        :return:
+
+        Override inherited method to so we can process any files received while there
+        was no driver connected.
+        """
+        log.msg('CLIENT CONNECTED FROM ', connection)
+        self.clients.add(connection)
+
+        self._submit_unprocessed_files()
+
+    def _submit_unprocessed_files(self):
+        """
+        Check list of local files and identify any that do not have corresponding
+        echograms.  Notify driver to create echograms of these.
+        :return:
+        """
+
+        for raw_file_name in self.retrieved_files:
+            # Screen for expected file names
+            log.msg('checking raw file %s' % raw_file_name)
+            match = FILE_NAME_MATCHER.match(raw_file_name)
+            if not match:
+                log.msg('Skipping file saved in unexpected naming format: %s' % raw_file_name)
+                continue
+
+            # calculate the target directory, check it is there
+            file_path = os.path.join(self.local_dir, self.refdes, *match.groups())
+            log.msg('checking directory %s' % file_path)
+            if os.path.exists(file_path):
+                dir_files = os.listdir(file_path)
+                log.msg('Directory found containing %s files' % len(dir_files))
+
+                png_files = fnmatch.filter(dir_files, '*' + raw_file_name[:-4] + '*.png')
+                if len(png_files) == 0:
+                    # there were no matching png files for this raw file.
+                    log.msg('Raw file %s has not been processed, sending to driver' % raw_file_name)
+                    packet_str = 'downloaded file:' + file_path + '/' + str(raw_file_name) + '\n'
+                    packets = Packet.create(packet_str, PacketType.FROM_INSTRUMENT)
+                    self.router.got_data(packets)
+                    log.msg('Packet sent to driver: %s' % packet_str)
+
+            else:
+                log.msg('No Directory corresponding to file %s. RefDes %s : ' % raw_file_name, self.refdes)
+
+
+
