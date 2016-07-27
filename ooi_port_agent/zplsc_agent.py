@@ -287,6 +287,7 @@ class ZplscPortAgent(PortAgent):
 
         self._submit_unprocessed_files()
 
+    @defer.inlineCallbacks
     def _submit_unprocessed_files(self):
         """
         Check list of local files and identify any that do not have corresponding
@@ -295,7 +296,8 @@ class ZplscPortAgent(PortAgent):
         """
 
         log.msg('BEGIN checking list of local files on Driver connect')
-        for raw_file_name in self.retrieved_files:
+        # copy the retrieved files set, could change during iteration
+        for raw_file_name in list(self.retrieved_files):
             # Screen for expected file names
             match = FILE_NAME_MATCHER.match(raw_file_name)
             if not match:
@@ -313,6 +315,9 @@ class ZplscPortAgent(PortAgent):
                     # there were no matching png files for this raw file.
                     file_name = os.path.join(file_path, self.refdes + '_' + raw_file_name)
                     self.notify(file_name)
+                    # ZPLSC takes a long time to generate an echogram
+                    # Sleep a bit between iterations to avoid gumming up the works
+                    yield self.sleep(30)
 
             else:
                 log.msg('No Directory corresponding to file %s. RefDes %s : ' % raw_file_name, self.refdes)
