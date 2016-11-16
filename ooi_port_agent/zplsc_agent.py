@@ -45,6 +45,9 @@ import fnmatch
 import os
 import re
 
+# Other imports
+import scandir as scandir
+
 from agents import PortAgent
 from common import MAX_RECONNECT_DELAY
 from packet import Packet
@@ -131,11 +134,16 @@ class FTPClientProtocol(FTPClient):
         """
         Queue up only new files for FTP download
         """
-        for file_list_line in file_list_protocol.files:
-            file_name = file_list_line['filename']
-            if self._should_skip(file_name):
-                continue
+        # Two passes
+        # First, extract all "raw" files from the list and store them in a dictionary {name: size}
+        # skipping any index, bottom or already processed raw files
+        raw_files_dict = {f['filename']: f['size'] for f in file_list_protocol.files
+                          if not self._should_skip(f['filename'])}
 
+        # Second pass, sort the file names, dropping the last. Files are appended to for an entire day.
+        # A file is only valid to be retrieved once a newer file has been created.
+        raw_files = sorted(raw_files_dict)[:-1]
+        for file_name in raw_files:
             # Screen for expected file names
             match = FILE_NAME_MATCHER.match(file_name)
             if not match:
@@ -151,7 +159,7 @@ class FTPClientProtocol(FTPClient):
 
             part_file_name = os.path.join(file_path, self._refdes + '_' + file_name + '.part')
             writer_deferred = defer.Deferred()
-            writer_deferred.addCallback(self._file_retrieved, file_list_line['size'])
+            writer_deferred.addCallback(self._file_retrieved, raw_files_dict[file_name])
             try:
                 yield self.retrieveFile(file_name, FileWriter(part_file_name, writer_deferred))
             except Exception as e:
@@ -245,7 +253,7 @@ class ZplscPortAgent(PortAgent):
         """
         log.msg('BEGIN inventory of local files prior to connecting to instrument')
         # recursively walk the file directory structure of the reference designator
-        for path, dirs, files in os.walk(os.path.join(self.local_dir, self.refdes)):
+        for path, dirs, files in scandir.walk(os.path.join(self.local_dir, self.refdes)):
             # Check this directory for RAW files
             # Inventory all files found
             for filename in fnmatch.filter(files, '*.raw'):
@@ -297,7 +305,7 @@ class ZplscPortAgent(PortAgent):
 
         log.msg('BEGIN checking list of local files on Driver connect')
         # copy the retrieved files set, could change during iteration
-        for raw_file_name in list(self.retrieved_files):
+        for raw_file_name in sorted(self.retrieved_files):
             # Screen for expected file names
             match = FILE_NAME_MATCHER.match(raw_file_name)
             if not match:
