@@ -1,0 +1,3 @@
+Version 0.0.40
+
+- Fixed issue where files were downloaded before they were completely written on the instrument
