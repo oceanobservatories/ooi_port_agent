@@ -1,3 +1,7 @@
+Version 0.0.41
+
+- ZPLSC - stop sending filenames to driver after disconnect
+
 Version 0.0.40
 
 - Fixed issue where files were downloaded before they were completely written on the instrument

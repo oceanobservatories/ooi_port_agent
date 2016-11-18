@@ -306,30 +306,30 @@ class ZplscPortAgent(PortAgent):
         log.msg('BEGIN checking list of local files on Driver connect')
         # copy the retrieved files set, could change during iteration
         for raw_file_name in sorted(self.retrieved_files):
-            # Screen for expected file names
-            match = FILE_NAME_MATCHER.match(raw_file_name)
-            if not match:
-                log.msg('Skipping file saved in unexpected naming format: %s' % raw_file_name)
-                continue
+            # Abort further processing if all clients have disconnected
+            if len(self.clients) > 0:
+                # Screen for expected file names
+                match = FILE_NAME_MATCHER.match(raw_file_name)
+                if not match:
+                    log.msg('Skipping file saved in unexpected naming format: %s' % raw_file_name)
+                    continue
 
-            # calculate the target directory, check it is there
-            file_path = os.path.join(self.local_dir, self.refdes, *match.groups())
+                # calculate the target directory, check it is there
+                file_path = os.path.join(self.local_dir, self.refdes, *match.groups())
 
-            if os.path.exists(file_path):
-                dir_files = os.listdir(file_path)
-                png_files = fnmatch.filter(dir_files, '*' + raw_file_name[:-4] + '*.png')
+                if os.path.exists(file_path):
+                    dir_files = os.listdir(file_path)
+                    png_files = fnmatch.filter(dir_files, '*' + raw_file_name[:-4] + '*.png')
 
-                if not png_files:
-                    # there were no matching png files for this raw file.
-                    file_name = os.path.join(file_path, self.refdes + '_' + raw_file_name)
-                    self.notify(file_name)
-                    # ZPLSC takes a long time to generate an echogram
-                    # Sleep a bit between iterations to avoid gumming up the works
-                    yield self.sleep(30)
+                    if not png_files:
+                        # there were no matching png files for this raw file.
+                        file_name = os.path.join(file_path, self.refdes + '_' + raw_file_name)
+                        self.notify(file_name)
+                        # Yield control briefly to allow other events to be processed
+                        yield self.sleep(.001)
 
-            else:
-                log.msg('No Directory corresponding to file %s. RefDes %s : ' % raw_file_name, self.refdes)
-
+                else:
+                    log.msg('No Directory corresponding to file %s. RefDes %s : ' % raw_file_name, self.refdes)
         log.msg('END checking list of local files on Driver connect')
 
     def notify(self, filename):
