@@ -326,11 +326,13 @@ class ZplscPortAgent(PortAgent):
                     # there were no matching png files for this raw file.
                     file_name = os.path.join(file_path, self.refdes + '_' + raw_file_name)
                     self.notify(file_name)
-                    # Yield control briefly to allow other events to be processed
-                    yield self.sleep(.001)
 
             else:
                 log.msg('No Directory corresponding to file %s. RefDes %s : ' % raw_file_name, self.refdes)
+
+            # Yield control briefly to allow other events to be processed
+            yield self.sleep(.001)
+
         log.msg('END checking list of local files on Driver connect')
 
     def notify(self, filename):

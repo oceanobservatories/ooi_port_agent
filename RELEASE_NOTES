@@ -1,3 +1,7 @@
+Version 0.0.42
+
+- ZPLSC - yield in every iteration of loop in _submit_unprocessed_files
+
 Version 0.0.41
 
 - ZPLSC - stop sending filenames to driver after disconnect
