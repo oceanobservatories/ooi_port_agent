@@ -138,6 +138,7 @@ class RetrieveFileFactory(SMBProtocolFactory):
 		files_on_disk = []
 
 		# recursively walk the image file directory structure
+		log.msg('Searaching for existing files')
 		for root, dirnames, filenames in os.walk(self.image_dir):
 			for filename in fnmatch.filter(filenames, '*.jpg'):
 				files_on_disk.append(filename)
@@ -157,12 +158,12 @@ class RetrieveFileFactory(SMBProtocolFactory):
 		reactor.callLater(0, self.list_dirs)
 		
 	def list_dirs(self):
-		d = self.listPath(service_name=self.share_name, path='//', pattern='Stills*')
+		d = self.listPath(service_name=self.share_name, path='//', pattern='Stills*', timeout=120)
 		d.addCallback(self.dirsListed)
 		d.addErrback(self.dirListingError)
 
 	def list_files(self, fpath):
-		d = self.listPath(service_name=self.share_name, path=fpath, pattern='*.jpg')
+		d = self.listPath(service_name=self.share_name, path=fpath, pattern='*.jpg', timeout=120)
 		d.addCallback(self.filesListed, fpath)
 		d.addErrback(self.fileListingError, fpath)
 
