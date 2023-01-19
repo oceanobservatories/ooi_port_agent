@@ -91,6 +91,7 @@ def main():
 
     try:
         os.environ['ANTELOPE_PYTHON_GILRELEASE'] = '1'
+        sys.path.append(os.environ['ANTELOPE'] + "/data/python")
         from antelope_agent import AntelopePortAgent
     except ImportError:
         AntelopePortAgent = None

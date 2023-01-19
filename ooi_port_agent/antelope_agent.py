@@ -15,8 +15,13 @@ import cPickle as pickle
 
 def get_one(orb):
     try:
+        log.msg('--- BEFORE THE REAP')
         pktid, srcname, pkttime, data = orb.reap(1)
+        log.msg('--- AFTER THE REAP')
+        log.msg('--- BEFORE THE Pkt.Packet')
         orb_packet = Pkt.Packet(srcname, pkttime, data)
+        log.msg('--- AFTER THE Pkt.Packet')
+        log.msg('--- START create_packets')
         return create_packets(orb_packet, pktid)
     except OrbIncompleteException:
         return []
@@ -137,22 +142,73 @@ class AntelopePortAgent(PortAgent):
 
 def create_packets(orb_packet, pktid):
     packets = []
-    for channel in orb_packet.channels:
-        d = {'calib': channel.calib,
-             'calper': channel.calper,
-             'net': channel.net,
-             'loc': channel.loc,
-             'sta': channel.sta,
-             'chan': channel.chan,
-             'data': channel.data,
-             'nsamp': channel.nsamp,
-             'samprate': channel.samprate,
-             'time': channel.time,
-             'type_suffix': orb_packet.type.suffix,
-             'version': orb_packet.version,
-             'pktid': pktid,
-             }
+    invalid_channels = ['SOH']
 
-        packets.extend(Packet.create(pickle.dumps(d, protocol=-1), PacketType.PICKLED_FROM_INSTRUMENT))
+    # Let's test to see if we can access the Packet
+    log.msg('--- TESTING orb_packet VALIDITY')
+    if orb_packet:
+        log.msg(orb_packet.channels)
+        log.msg(orb_packet.channels[0].calib)
+        log.msg(orb_packet.channels[0].calper)
+        log.msg(orb_packet.channels[0].net)
+        log.msg(orb_packet.channels[0].loc)
+        log.msg(orb_packet.channels[0].sta)
+        log.msg(orb_packet.channels[0].chan)
+        # try:
+        #     log.msg(orb_packet.channels[0].data)
+        # except Exception as channel_data_exception:
+        #     log.msg(channel_data_exception)
+        # log.msg(orb_packet.channels[0].nsamp)
+        log.msg(orb_packet.channels[0].samprate)
+        log.msg(orb_packet.channels[0].time)
+        log.msg(orb_packet.type.suffix)
+        log.msg(orb_packet.version)
+        log.msg(pktid)
+    else:
+        return packets
+
+    try:
+        for channel in orb_packet.channels:
+            try:
+                if channel.chan in invalid_channels:
+                    d = {'calib': channel.calib,
+                         'calper': channel.calper,
+                         'net': channel.net,
+                         'loc': channel.loc,
+                         'sta': channel.sta,
+                         'chan': channel.chan,
+                         'data': [],
+                         'nsamp': 0,
+                         'samprate': channel.samprate,
+                         'time': channel.time,
+                         'type_suffix': orb_packet.type.suffix,
+                         'version': orb_packet.version,
+                         'pktid': pktid,
+                         }
+                else:
+                    d = {'calib': channel.calib,
+                         'calper': channel.calper,
+                         'net': channel.net,
+                         'loc': channel.loc,
+                         'sta': channel.sta,
+                         'chan': channel.chan,
+                         'data': channel.data,
+                         'nsamp': channel.nsamp,
+                         'samprate': channel.samprate,
+                         'time': channel.time,
+                         'type_suffix': orb_packet.type.suffix,
+                         'version': orb_packet.version,
+                         'pktid': pktid,
+                         }
+                packets.extend(Packet.create(pickle.dumps(d, protocol=-1), PacketType.PICKLED_FROM_INSTRUMENT))
+            except Exception as exi:
+                log.msg('Exception at: create_packets')
+                log.msg(exi)
+                pass
+    except Exception as exo:
+        log.msg('Exception at: orb_packet.channels')
+        log.msg(exo)
+        pass
+    log.msg('--- RETURNING create_packets')
     return packets
 

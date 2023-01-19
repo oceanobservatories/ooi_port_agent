@@ -203,7 +203,7 @@ class PortAgent(object):
 
         for service in self.config['ports']:
             name, service_id = self.get_service_name_id(service)
-            yield get(check_string + service_id)
+            yield get(check_string + service_id, json.dumps({}))
 
     @inlineCallbacks
     def get_consul_host(self):
