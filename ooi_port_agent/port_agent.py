@@ -15,7 +15,7 @@ Options:
 
 """
 import logging
-import os
+import os, sys
 
 from docopt import docopt
 from twisted.internet import reactor
