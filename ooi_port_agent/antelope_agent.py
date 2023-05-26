@@ -15,13 +15,8 @@ import cPickle as pickle
 
 def get_one(orb):
     try:
-        log.msg('--- BEFORE THE REAP')
         pktid, srcname, pkttime, data = orb.reap(1)
-        log.msg('--- AFTER THE REAP')
-        log.msg('--- BEFORE THE Pkt.Packet')
         orb_packet = Pkt.Packet(srcname, pkttime, data)
-        log.msg('--- AFTER THE Pkt.Packet')
-        log.msg('--- START create_packets')
         return create_packets(orb_packet, pktid)
     except OrbIncompleteException:
         return []
@@ -145,28 +140,12 @@ def create_packets(orb_packet, pktid):
     invalid_channels = ['SOH']
 
     # Let's test to see if we can access the Packet
-    log.msg('--- TESTING orb_packet VALIDITY')
     if orb_packet:
-        log.msg(orb_packet.channels)
-        log.msg(orb_packet.channels[0].calib)
-        log.msg(orb_packet.channels[0].calper)
-        log.msg(orb_packet.channels[0].net)
-        log.msg(orb_packet.channels[0].loc)
-        log.msg(orb_packet.channels[0].sta)
-        log.msg(orb_packet.channels[0].chan)
-        # try:
-        #     log.msg(orb_packet.channels[0].data)
-        # except Exception as channel_data_exception:
-        #     log.msg(channel_data_exception)
-        # log.msg(orb_packet.channels[0].nsamp)
-        log.msg(orb_packet.channels[0].samprate)
-        log.msg(orb_packet.channels[0].time)
-        log.msg(orb_packet.type.suffix)
-        log.msg(orb_packet.version)
-        log.msg(pktid)
+        pass
     else:
         return packets
 
+    # Checking for invalid channels and setting data to empty or zero
     try:
         for channel in orb_packet.channels:
             try:
@@ -209,6 +188,5 @@ def create_packets(orb_packet, pktid):
         log.msg('Exception at: orb_packet.channels')
         log.msg(exo)
         pass
-    log.msg('--- RETURNING create_packets')
     return packets
 
