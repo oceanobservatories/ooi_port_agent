@@ -137,22 +137,56 @@ class AntelopePortAgent(PortAgent):
 
 def create_packets(orb_packet, pktid):
     packets = []
-    for channel in orb_packet.channels:
-        d = {'calib': channel.calib,
-             'calper': channel.calper,
-             'net': channel.net,
-             'loc': channel.loc,
-             'sta': channel.sta,
-             'chan': channel.chan,
-             'data': channel.data,
-             'nsamp': channel.nsamp,
-             'samprate': channel.samprate,
-             'time': channel.time,
-             'type_suffix': orb_packet.type.suffix,
-             'version': orb_packet.version,
-             'pktid': pktid,
-             }
+    invalid_channels = ['SOH']
 
-        packets.extend(Packet.create(pickle.dumps(d, protocol=-1), PacketType.PICKLED_FROM_INSTRUMENT))
+    # Let's test to see if we can access the Packet
+    if orb_packet:
+        pass
+    else:
+        return packets
+
+    # Checking for invalid channels and setting data to empty or zero
+    try:
+        for channel in orb_packet.channels:
+            try:
+                if channel.chan in invalid_channels:
+                    d = {'calib': channel.calib,
+                         'calper': channel.calper,
+                         'net': channel.net,
+                         'loc': channel.loc,
+                         'sta': channel.sta,
+                         'chan': channel.chan,
+                         'data': [],
+                         'nsamp': 0,
+                         'samprate': channel.samprate,
+                         'time': channel.time,
+                         'type_suffix': orb_packet.type.suffix,
+                         'version': orb_packet.version,
+                         'pktid': pktid,
+                         }
+                else:
+                    d = {'calib': channel.calib,
+                         'calper': channel.calper,
+                         'net': channel.net,
+                         'loc': channel.loc,
+                         'sta': channel.sta,
+                         'chan': channel.chan,
+                         'data': channel.data,
+                         'nsamp': channel.nsamp,
+                         'samprate': channel.samprate,
+                         'time': channel.time,
+                         'type_suffix': orb_packet.type.suffix,
+                         'version': orb_packet.version,
+                         'pktid': pktid,
+                         }
+                packets.extend(Packet.create(pickle.dumps(d, protocol=-1), PacketType.PICKLED_FROM_INSTRUMENT))
+            except Exception as exi:
+                log.msg('Exception at: create_packets')
+                log.msg(exi)
+                pass
+    except Exception as exo:
+        log.msg('Exception at: orb_packet.channels')
+        log.msg(exo)
+        pass
     return packets
 
