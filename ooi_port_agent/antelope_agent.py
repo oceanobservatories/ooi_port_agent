@@ -90,7 +90,7 @@ class AntelopePortAgent(PortAgent):
 
     def _set_reject(self, command, *args):
         if len(args) == 0:
-            num_sources = self.orb.reject('')
+            num_sources = 0
         else:
             num_sources = self.orb.reject(args[0])
         msg = 'Orb reject(%s) yielded num_sources: %d' % (args[:1], num_sources)
