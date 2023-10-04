@@ -70,6 +70,7 @@ class AntelopePortAgent(PortAgent):
         log.msg('PortAgent register commands for protocol: %s' % command_protocol)
         command_protocol.register_command('orblist', self._list_channels)
         command_protocol.register_command('orbselect', self._set_select)
+        command_protocol.register_command('orbreject', self._set_reject)
         command_protocol.register_command('orbseek', self._set_seek)
         command_protocol.register_command('orbstart', self._orb_start)
         command_protocol.register_command('orbstop', self._orb_stop)
@@ -85,6 +86,14 @@ class AntelopePortAgent(PortAgent):
         else:
             num_sources = self.orb.select(args[0])
         msg = 'Orb select(%s) yielded num_sources: %d' % (args[:1], num_sources)
+        return Packet.create(msg + NEWLINE, PacketType.PA_STATUS)
+
+    def _set_reject(self, command, *args):
+        if len(args) == 0:
+            num_sources = 0
+        else:
+            num_sources = self.orb.reject(args[0])
+        msg = 'Orb reject(%s) yielded num_sources: %d' % (args[:1], num_sources)
         return Packet.create(msg + NEWLINE, PacketType.PA_STATUS)
 
     def _set_seek(self, command, *args):
